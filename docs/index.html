@@ -16,7 +16,7 @@
 </head>
 <body>
   <main class="wrap">
-    <span class="badge">v0.2 · PAPER ONLY · measurement fixes v0.2.1</span>
+    <span class="badge">v0.3 · PAPER ONLY · LOCAL LIVE DASHBOARD</span>
     <h1>Arb Radar</h1>
     <p>Research radar for cross-market price dislocations in Par multi-market launches on Robinhood Chain.</p>
     <section class="grid">
@@ -31,7 +31,7 @@
     <p style="overflow-wrap:anywhere"><code>0x9bbd4d06ac29d8900b34998a56e96a33c16220f0</code></p>
     <p>The original target is identified by address, regardless of its current symbol. Other LONG5 symbols are a comparison cohort only. Historical executable P&amp;L and half-life remain unknown without amount-sensitive historical state.</p>
     <p><a style="color:#7ee787" href="LONG5_REPLAY.md">Replay report</a> · <a style="color:#7ee787" href="LONG5_REPLAY.json">Replay data</a></p>
-    <p>The sequencer feed reports already-ordered blocks, not a public mempool. This static page summarizes implementation status; it is not a live profit dashboard.</p>
+    <h2>v0.3 local dashboard</h2><p>The live research dashboard now runs locally from the SQLite research database. After pulling <code>main</code>, run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. It shows executable paper quotes, discovery-to-first-quote timing, sizing duration and RPC latency. This GitHub Pages site remains a static project-status page and does not expose your local research database.</p><p>The sequencer feed reports already-ordered blocks, not a public mempool. No wallet, signer or transaction submission exists.</p>
   </main>
 </body>
 </html>
