@@ -10,10 +10,48 @@ interface ObservationRow {
   payload: string;
 }
 
+type Freshness = 'empty' | 'idle' | 'live' | 'delayed' | 'stale';
+
+interface OpportunitySummary extends Record<string, unknown> {
+  key: string;
+  timestampMs: number;
+  status: 'positive' | 'nonpositive' | 'unavailable';
+  token: unknown;
+  buyMarket: unknown;
+  sellMarket: unknown;
+  grossSpreadPct: number | null;
+  latestInputUsd: number | null;
+  latestNetProfitUsd: number | null;
+  bestObservedInputUsd: number | null;
+  bestObservedNetProfitUsd: number | null;
+  quoteCount: number;
+  blockNumber: unknown;
+  source: string;
+  reason: string | null;
+}
+
 export interface DashboardSnapshot {
   paperOnly: true;
   generatedAtMs: number;
-  database: { path: string; exists: boolean; lastObservationAtMs: number | null };
+  database: {
+    path: string;
+    exists: boolean;
+    lastObservationAtMs: number | null;
+    ageMs: number | null;
+    freshness: Freshness;
+  };
+  window: {
+    durationMs: number;
+    fromMs: number;
+    toMs: number;
+    analysisRowCap: number;
+    truncated: {
+      routeScreens: boolean;
+      executableQuotes: boolean;
+      lifecycleRows: boolean;
+      rpcSamples: boolean;
+    };
+  };
   counts: {
     launches: number;
     marketSnapshots: number;
@@ -24,18 +62,34 @@ export interface DashboardSnapshot {
   };
   radar: {
     qualifyingScreens: number;
+    quoteBackedCandidates: number;
     positiveExecutableQuotes: number;
+    nonpositiveExecutableQuotes: number;
     unavailableQuotes: number;
+    positiveRatePct: number | null;
+    uniqueTokens: number;
     medianRpcLatencyMs: number | null;
     p95RpcLatencyMs: number | null;
+    medianFirstQuoteMs: number | null;
+    p95FirstQuoteMs: number | null;
+    medianSizingMs: number | null;
+    p95SizingMs: number | null;
+    lifecycleDeadlineSamples: number;
+    missedLifecycleDeadlines: number;
+    missedDeadlineRatePct: number | null;
+    p95DeadlineMissMs: number | null;
+    latestPositiveOpportunity: OpportunitySummary | null;
   };
-  opportunities: Array<Record<string, unknown>>;
+  opportunities: OpportunitySummary[];
   timings: Array<Record<string, unknown>>;
   rpcLatency: Array<Record<string, unknown>>;
+  paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
 }
 
 const tableNames = ['launches','market_snapshots','route_screens','executable_quotes','opportunity_lifecycle','rpc_latency_samples'] as const;
 type TableName = typeof tableNames[number];
+const DEFAULT_WINDOW_MS = 60_000;
+const ANALYSIS_ROW_CAP = 5_000;
 
 function clampLimit(value: number, fallback = 100): number {
   if (!Number.isFinite(value)) return fallback;
@@ -54,8 +108,9 @@ function parsePayload(text: string): Record<string, unknown> | null {
 }
 
 function percentile(values: number[], fraction: number): number | null {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a,b)=>a-b);
+  const finite = values.filter(Number.isFinite);
+  if (!finite.length) return null;
+  const sorted = [...finite].sort((a,b)=>a-b);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
   return sorted[index] ?? null;
 }
@@ -71,10 +126,16 @@ function countRows(db: DatabaseSync, table: TableName): number {
   return Number(row?.count ?? 0);
 }
 
-function rows(db: DatabaseSync, table: TableName, limit: number): ObservationRow[] {
+function countSince(db: DatabaseSync, table: TableName, sinceMs: number): number {
+  if (!hasTable(db, table)) return 0;
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE timestamp_ms >= ?`).get(sinceMs) as { count?: number } | undefined;
+  return Number(row?.count ?? 0);
+}
+
+function rowsSince(db: DatabaseSync, table: TableName, sinceMs: number, limit = ANALYSIS_ROW_CAP): ObservationRow[] {
   if (!hasTable(db, table)) return [];
-  return db.prepare(`SELECT id,timestamp_ms,block_number,source,observation_key,payload FROM ${table} ORDER BY timestamp_ms DESC,id DESC LIMIT ?`)
-    .all(clampLimit(limit)) as unknown as ObservationRow[];
+  return db.prepare(`SELECT id,timestamp_ms,block_number,source,observation_key,payload FROM ${table} WHERE timestamp_ms >= ? ORDER BY timestamp_ms DESC,id DESC LIMIT ?`)
+    .all(sinceMs, Math.min(ANALYSIS_ROW_CAP, Math.max(1, Math.floor(limit)))) as unknown as ObservationRow[];
 }
 
 function latestTimestamp(db: DatabaseSync): number | null {
@@ -92,25 +153,188 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-export function buildDashboardSnapshot(path = 'data/radar.sqlite', limit = 100): DashboardSnapshot {
-  const generatedAtMs = Date.now();
-  if (!existsSync(path)) {
-    return {
-      paperOnly: true,
-      generatedAtMs,
-      database: { path, exists: false, lastObservationAtMs: null },
-      counts: { launches:0,marketSnapshots:0,routeScreens:0,executableQuotes:0,lifecycleRows:0,rpcSamples:0 },
-      radar: { qualifyingScreens:0,positiveExecutableQuotes:0,unavailableQuotes:0,medianRpcLatencyMs:null,p95RpcLatencyMs:null },
-      opportunities: [], timings: [], rpcLatency: [],
+function pct(numerator: number, denominator: number): number | null {
+  return denominator > 0 ? (numerator / denominator) * 100 : null;
+}
+
+function freshness(lastObservationAtMs: number | null, nowMs: number): { ageMs: number | null; freshness: Freshness } {
+  if (lastObservationAtMs === null) return { ageMs: null, freshness: 'idle' };
+  const ageMs = Math.max(0, nowMs - lastObservationAtMs);
+  if (ageMs <= 15_000) return { ageMs, freshness: 'live' };
+  if (ageMs <= 60_000) return { ageMs, freshness: 'delayed' };
+  return { ageMs, freshness: 'stale' };
+}
+
+function routeFields(payload: Record<string, unknown>): {
+  token: unknown;
+  buyMarket: unknown;
+  sellMarket: unknown;
+  grossSpreadPct: number | null;
+} {
+  const route = payload.route as Record<string,unknown> | undefined;
+  const screen = payload.screen as Record<string,unknown> | undefined;
+  const buy = route?.buy as Record<string,unknown> | undefined;
+  const sell = route?.sell as Record<string,unknown> | undefined;
+  return {
+    token: route?.token ?? null,
+    buyMarket: buy?.quoteSymbol ?? buy?.index ?? null,
+    sellMarket: sell?.quoteSymbol ?? sell?.index ?? null,
+    grossSpreadPct: num(screen?.grossSpreadPct),
+  };
+}
+
+function summarizeOpportunities(rows: ObservationRow[], limit: number): {
+  opportunities: OpportunitySummary[];
+  paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  latestPositiveOpportunity: OpportunitySummary | null;
+} {
+  type Mutable = OpportunitySummary & { _hasNumeric: boolean };
+  const groups = new Map<string, Mutable>();
+  const paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }> = [];
+  let latestPositiveRow: { row: ObservationRow; payload: Record<string,unknown> } | null = null;
+
+  for (const row of rows) {
+    const payload = parsePayload(row.payload);
+    if (!payload) continue;
+    const fields = routeFields(payload);
+    const current = groups.get(row.observation_key);
+    const quote = payload.quote as Record<string,unknown> | undefined;
+    const netProfitUsd = num(payload.netProfitUsd);
+    const isUnavailable = payload.status === 'unavailable';
+
+    if (!current) {
+      groups.set(row.observation_key, {
+        key: row.observation_key,
+        timestampMs: row.timestamp_ms,
+        status: isUnavailable ? 'unavailable' : (netProfitUsd !== null && netProfitUsd > 0 ? 'positive' : 'nonpositive'),
+        token: fields.token,
+        buyMarket: fields.buyMarket,
+        sellMarket: fields.sellMarket,
+        grossSpreadPct: fields.grossSpreadPct,
+        latestInputUsd: quote ? num(quote.inputUsd) : null,
+        latestNetProfitUsd: netProfitUsd,
+        bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
+        bestObservedNetProfitUsd: netProfitUsd,
+        quoteCount: netProfitUsd === null ? 0 : 1,
+        blockNumber: quote?.blockNumber ?? row.block_number,
+        source: row.source,
+        reason: isUnavailable ? String(payload.reason ?? 'unavailable') : null,
+        _hasNumeric: netProfitUsd !== null,
+      });
+    } else {
+      if ((current.token === null || current.token === undefined) && fields.token !== null) current.token = fields.token;
+      if ((current.buyMarket === null || current.buyMarket === undefined) && fields.buyMarket !== null) current.buyMarket = fields.buyMarket;
+      if ((current.sellMarket === null || current.sellMarket === undefined) && fields.sellMarket !== null) current.sellMarket = fields.sellMarket;
+      if (current.grossSpreadPct === null && fields.grossSpreadPct !== null) current.grossSpreadPct = fields.grossSpreadPct;
+      if (netProfitUsd !== null) {
+        current.quoteCount++;
+        current._hasNumeric = true;
+        if (current.bestObservedNetProfitUsd === null || netProfitUsd > current.bestObservedNetProfitUsd) {
+          current.bestObservedNetProfitUsd = netProfitUsd;
+          current.bestObservedInputUsd = quote ? num(quote.inputUsd) : null;
+        }
+      }
+    }
+
+    if (netProfitUsd !== null) {
+      paperPnl.push({ timestampMs: row.timestamp_ms, netProfitUsd, key: row.observation_key });
+      if (netProfitUsd > 0 && (!latestPositiveRow || row.timestamp_ms > latestPositiveRow.row.timestamp_ms)) {
+        latestPositiveRow = { row, payload };
+      }
+    }
+  }
+
+  const opportunities = [...groups.values()]
+    .map(({ _hasNumeric, ...item }) => {
+      if (_hasNumeric) item.status = (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
+      return item;
+    })
+    .sort((a,b)=>b.timestampMs-a.timestampMs)
+    .slice(0, clampLimit(limit));
+
+  let latestPositiveOpportunity: OpportunitySummary | null = null;
+  if (latestPositiveRow) {
+    const { row, payload } = latestPositiveRow;
+    const quote = payload.quote as Record<string,unknown> | undefined;
+    const fields = routeFields(payload);
+    const netProfitUsd = num(payload.netProfitUsd);
+    latestPositiveOpportunity = {
+      key: row.observation_key,
+      timestampMs: row.timestamp_ms,
+      status: 'positive',
+      token: fields.token,
+      buyMarket: fields.buyMarket,
+      sellMarket: fields.sellMarket,
+      grossSpreadPct: fields.grossSpreadPct,
+      latestInputUsd: quote ? num(quote.inputUsd) : null,
+      latestNetProfitUsd: netProfitUsd,
+      bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
+      bestObservedNetProfitUsd: netProfitUsd,
+      quoteCount: 1,
+      blockNumber: quote?.blockNumber ?? row.block_number,
+      source: row.source,
+      reason: null,
     };
   }
 
+  return {
+    opportunities,
+    paperPnl: paperPnl.sort((a,b)=>a.timestampMs-b.timestampMs).slice(-120),
+    latestPositiveOpportunity,
+  };
+}
+
+export function buildDashboardSnapshot(
+  path = 'data/radar.sqlite',
+  limit = 100,
+  nowMs = Date.now(),
+  recentWindowMs = DEFAULT_WINDOW_MS,
+): DashboardSnapshot {
+  const generatedAtMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const durationMs = Number.isFinite(recentWindowMs) && recentWindowMs > 0
+    ? Math.min(15 * 60_000, Math.max(10_000, Math.floor(recentWindowMs)))
+    : DEFAULT_WINDOW_MS;
+  const fromMs = generatedAtMs - durationMs;
+
+  const emptyBase = {
+    paperOnly: true as const,
+    generatedAtMs,
+    database: { path, exists: false, lastObservationAtMs: null, ageMs: null, freshness: 'empty' as Freshness },
+    window: {
+      durationMs,
+      fromMs,
+      toMs: generatedAtMs,
+      analysisRowCap: ANALYSIS_ROW_CAP,
+      truncated: { routeScreens:false,executableQuotes:false,lifecycleRows:false,rpcSamples:false },
+    },
+    counts: { launches:0,marketSnapshots:0,routeScreens:0,executableQuotes:0,lifecycleRows:0,rpcSamples:0 },
+    radar: {
+      qualifyingScreens:0,quoteBackedCandidates:0,positiveExecutableQuotes:0,nonpositiveExecutableQuotes:0,
+      unavailableQuotes:0,positiveRatePct:null,uniqueTokens:0,medianRpcLatencyMs:null,p95RpcLatencyMs:null,
+      medianFirstQuoteMs:null,p95FirstQuoteMs:null,medianSizingMs:null,p95SizingMs:null,
+      lifecycleDeadlineSamples:0,missedLifecycleDeadlines:0,missedDeadlineRatePct:null,p95DeadlineMissMs:null,
+      latestPositiveOpportunity:null,
+    },
+    opportunities: [] as OpportunitySummary[],
+    timings: [] as Array<Record<string,unknown>>,
+    rpcLatency: [] as Array<Record<string,unknown>>,
+    paperPnl: [] as Array<{timestampMs:number;netProfitUsd:number;key:string}>,
+  };
+
+  if (!existsSync(path)) return emptyBase;
+
   const db = new DatabaseSync(path, { readOnly: true });
   try {
-    const screens = rows(db,'route_screens',Math.max(limit,250));
-    const quotes = rows(db,'executable_quotes',limit);
-    const lifecycle = rows(db,'opportunity_lifecycle',Math.max(limit,250));
-    const rpc = rows(db,'rpc_latency_samples',Math.max(limit,250));
+    const recentCounts = {
+      routeScreens: countSince(db,'route_screens',fromMs),
+      executableQuotes: countSince(db,'executable_quotes',fromMs),
+      lifecycleRows: countSince(db,'opportunity_lifecycle',fromMs),
+      rpcSamples: countSince(db,'rpc_latency_samples',fromMs),
+    };
+    const screens = rowsSince(db,'route_screens',fromMs);
+    const quoteRows = rowsSince(db,'executable_quotes',fromMs);
+    const lifecycle = rowsSince(db,'opportunity_lifecycle',fromMs);
+    const rpc = rowsSince(db,'rpc_latency_samples',fromMs);
 
     const qualifyingScreens = screens.reduce((total,row)=>{
       const payload=parsePayload(row.payload);
@@ -118,71 +342,83 @@ export function buildDashboardSnapshot(path = 'data/radar.sqlite', limit = 100):
       return total + (screen?.passesFeeFloor === true ? 1 : 0);
     },0);
 
-    let positiveExecutableQuotes=0, unavailableQuotes=0;
-    const opportunities: Array<Record<string, unknown>> = [];
-    for (const row of quotes) {
+    const tokens = new Set<string>();
+    for (const row of screens) {
       const payload=parsePayload(row.payload);
-      if (!payload) continue;
-      if (payload.status === 'unavailable') {
-        unavailableQuotes++;
-        opportunities.push({ key:row.observation_key,timestampMs:row.timestamp_ms,status:'unavailable',reason:String(payload.reason ?? 'unavailable'),source:row.source });
-        continue;
-      }
-      const quote = payload.quote as Record<string,unknown> | undefined;
-      const route = payload.route as Record<string,unknown> | undefined;
-      const screen = payload.screen as Record<string,unknown> | undefined;
-      const netProfitUsd=num(payload.netProfitUsd);
-      if (!quote || !route || netProfitUsd === null) continue;
-      if (netProfitUsd > 0) positiveExecutableQuotes++;
-      const buy=route.buy as Record<string,unknown> | undefined;
-      const sell=route.sell as Record<string,unknown> | undefined;
-      opportunities.push({
-        key:row.observation_key,
-        timestampMs:row.timestamp_ms,
-        status: netProfitUsd > 0 ? 'positive' : 'nonpositive',
-        token:route.token ?? null,
-        buyMarket:buy?.quoteSymbol ?? buy?.index ?? null,
-        sellMarket:sell?.quoteSymbol ?? sell?.index ?? null,
-        grossSpreadPct:num(screen?.grossSpreadPct),
-        inputUsd:num(quote.inputUsd),
-        outputUsd:num(quote.outputUsd),
-        gasUsd:num(quote.gasUsd),
-        extraCostsUsd:num(quote.extraCostsUsd),
-        safetyMarginUsd:num(quote.safetyMarginUsd),
-        netProfitUsd,
-        blockNumber:quote.blockNumber ?? row.block_number,
-        source:row.source,
-      });
+      const route=payload?.route as Record<string,unknown> | undefined;
+      if (typeof route?.token === 'string') tokens.add(route.token.toLowerCase());
     }
 
-    const timings = lifecycle.flatMap(row => {
+    const { opportunities, paperPnl, latestPositiveOpportunity } = summarizeOpportunities(quoteRows,limit);
+    for (const item of opportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
+
+    const quoteBackedCandidates = opportunities.filter(x=>x.quoteCount > 0).length;
+    const positiveExecutableQuotes = opportunities.filter(x=>x.status === 'positive' && x.quoteCount > 0).length;
+    const nonpositiveExecutableQuotes = opportunities.filter(x=>x.status === 'nonpositive' && x.quoteCount > 0).length;
+    const unavailableQuotes = opportunities.filter(x=>x.status === 'unavailable').length;
+
+    const timings: Array<Record<string,unknown>> = [];
+    const firstQuoteDurations: number[] = [];
+    const sizingDurations: number[] = [];
+    const deadlineMisses: number[] = [];
+    let lifecycleDeadlineSamples = 0;
+    let missedLifecycleDeadlines = 0;
+    const seenTimingKeys = new Set<string>();
+
+    for (const row of lifecycle) {
       const payload=parsePayload(row.payload);
-      const timing=payload?.measurementTiming as Record<string,unknown> | undefined;
-      if (!timing) return [];
-      return [{
-        key:row.observation_key,
-        timestampMs:row.timestamp_ms,
-        discoveryToFirstQuoteStartedMs:num(timing.discoveryToFirstQuoteStartedMs),
-        discoveryToFirstQuoteCompletedMs:num(timing.discoveryToFirstQuoteCompletedMs),
-        sizingDurationMs:num(timing.sizingDurationMs),
-        discoveryToPostSizingLifecycleMs:num(timing.discoveryToPostSizingLifecycleMs),
-        firstExecutableQuoteSucceeded:timing.firstExecutableQuoteSucceeded === true,
-        captureCapability:timing.captureCapability ?? null,
-      }];
-    });
+      if (!payload) continue;
+      const timing=payload.measurementTiming as Record<string,unknown> | undefined;
+      if (timing && !seenTimingKeys.has(row.observation_key)) {
+        seenTimingKeys.add(row.observation_key);
+        const firstQuote=num(timing.discoveryToFirstQuoteCompletedMs);
+        const sizing=num(timing.sizingDurationMs);
+        if (firstQuote !== null) firstQuoteDurations.push(firstQuote);
+        if (sizing !== null) sizingDurations.push(sizing);
+        timings.push({
+          key:row.observation_key,
+          timestampMs:row.timestamp_ms,
+          discoveryToFirstQuoteStartedMs:num(timing.discoveryToFirstQuoteStartedMs),
+          discoveryToFirstQuoteCompletedMs:firstQuote,
+          sizingDurationMs:sizing,
+          discoveryToPostSizingLifecycleMs:num(timing.discoveryToPostSizingLifecycleMs),
+          firstExecutableQuoteSucceeded:timing.firstExecutableQuoteSucceeded === true,
+          captureCapability:timing.captureCapability ?? null,
+        });
+      }
+      const miss=num(payload.deadlineMissedByMs);
+      const target=num(payload.targetMs);
+      if (miss !== null && target !== null) {
+        lifecycleDeadlineSamples++;
+        deadlineMisses.push(miss);
+        if (miss > 0) missedLifecycleDeadlines++;
+      }
+    }
 
     const rpcLatency = rpc.flatMap(row => {
       const payload=parsePayload(row.payload);
-      const durationMs=num(payload?.durationMs);
-      if (durationMs === null) return [];
-      return [{ timestampMs:row.timestamp_ms,method:row.observation_key,durationMs,status:payload?.status ?? null }];
+      const duration=num(payload?.durationMs);
+      if (duration === null) return [];
+      return [{ timestampMs:row.timestamp_ms,method:row.observation_key,durationMs:duration,status:payload?.status ?? null }];
     });
     const durations=rpcLatency.map(x=>x.durationMs as number);
+
+    const lastObservationAtMs=latestTimestamp(db);
+    const fresh=freshness(lastObservationAtMs,generatedAtMs);
 
     return {
       paperOnly:true,
       generatedAtMs,
-      database:{path,exists:true,lastObservationAtMs:latestTimestamp(db)},
+      database:{path,exists:true,lastObservationAtMs,...fresh},
+      window:{
+        durationMs,fromMs,toMs:generatedAtMs,analysisRowCap:ANALYSIS_ROW_CAP,
+        truncated:{
+          routeScreens:recentCounts.routeScreens>ANALYSIS_ROW_CAP,
+          executableQuotes:recentCounts.executableQuotes>ANALYSIS_ROW_CAP,
+          lifecycleRows:recentCounts.lifecycleRows>ANALYSIS_ROW_CAP,
+          rpcSamples:recentCounts.rpcSamples>ANALYSIS_ROW_CAP,
+        },
+      },
       counts:{
         launches:countRows(db,'launches'),
         marketSnapshots:countRows(db,'market_snapshots'),
@@ -193,14 +429,28 @@ export function buildDashboardSnapshot(path = 'data/radar.sqlite', limit = 100):
       },
       radar:{
         qualifyingScreens,
+        quoteBackedCandidates,
         positiveExecutableQuotes,
+        nonpositiveExecutableQuotes,
         unavailableQuotes,
+        positiveRatePct:pct(positiveExecutableQuotes,quoteBackedCandidates),
+        uniqueTokens:tokens.size,
         medianRpcLatencyMs:percentile(durations,0.5),
         p95RpcLatencyMs:percentile(durations,0.95),
+        medianFirstQuoteMs:percentile(firstQuoteDurations,0.5),
+        p95FirstQuoteMs:percentile(firstQuoteDurations,0.95),
+        medianSizingMs:percentile(sizingDurations,0.5),
+        p95SizingMs:percentile(sizingDurations,0.95),
+        lifecycleDeadlineSamples,
+        missedLifecycleDeadlines,
+        missedDeadlineRatePct:pct(missedLifecycleDeadlines,lifecycleDeadlineSamples),
+        p95DeadlineMissMs:percentile(deadlineMisses,0.95),
+        latestPositiveOpportunity,
       },
       opportunities,
-      timings,
-      rpcLatency,
+      timings:timings.sort((a,b)=>(b.timestampMs as number)-(a.timestampMs as number)).slice(0,clampLimit(limit)),
+      rpcLatency:rpcLatency.slice(0,clampLimit(limit)),
+      paperPnl,
     };
   } finally {
     db.close();
