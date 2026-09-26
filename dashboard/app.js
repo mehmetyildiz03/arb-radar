@@ -261,6 +261,7 @@ function render(data){
   setText('runtimeProbes',nf.format(runtime.probesCompleted??0)+' / '+nf.format(runtime.probesStarted??0));
   setText('runtimeSizing',nf.format(runtime.sizingCompleted??0)+' / '+nf.format(runtime.sizingStarted??0));
   setText('runtimeProbeConcurrency',runtime.probeConcurrency??'—');setText('runtimeSizingConcurrency',runtime.sizingConcurrency??'—');
+  setText('runtimeSizingQuoteConcurrency',runtime.sizingQuoteConcurrency??'—');
   setText('runtimeDuration',fmtMs(runtime.tickDurationMs));setText('runtimeValuation',nf.format(runtime.valuationFetches??0));
 
   const truncated=Object.values(data.window.truncated).some(Boolean);

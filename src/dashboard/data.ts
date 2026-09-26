@@ -117,6 +117,7 @@ export interface DashboardSnapshot {
     maxActiveSizing: number;
     probeConcurrency: number | null;
     sizingConcurrency: number | null;
+    sizingQuoteConcurrency: number | null;
     candidateMaxQueueMs: number | null;
     valuationFetches: number;
   };
@@ -481,7 +482,7 @@ export function buildDashboardSnapshot(
       simulation:{},
       dominantSimulationStep:null,
     },
-    runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0 },
+    runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,sizingQuoteConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0 },
   };
 
   if (!existsSync(path)) return emptyBase;
@@ -517,6 +518,7 @@ export function buildDashboardSnapshot(
         maxActiveSizing: num(scheduler.maxActiveSizing) ?? 0,
         probeConcurrency: num(payload.probeConcurrency),
         sizingConcurrency: num(payload.sizingConcurrency),
+        sizingQuoteConcurrency: num(payload.sizingQuoteConcurrency),
         candidateMaxQueueMs: num(payload.candidateMaxQueueMs),
         valuationFetches: num(payload.valuationFetches) ?? 0,
       };

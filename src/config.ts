@@ -9,6 +9,7 @@ export interface RadarConfig {
   recentWindowSeconds: number;
   probeConcurrency: number;
   sizingConcurrency: number;
+  sizingQuoteConcurrency: number;
   candidateMaxQueueMs: number;
 }
 
@@ -31,6 +32,7 @@ export function loadConfig(env = process.env): RadarConfig {
     recentWindowSeconds: positiveNumber(env.RECENT_WINDOW_SECONDS, 60),
     probeConcurrency: Math.min(8, Math.max(1, Math.floor(positiveNumber(env.PROBE_CONCURRENCY, 2)))),
     sizingConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_CONCURRENCY, 1)))),
+    sizingQuoteConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_QUOTE_CONCURRENCY, 2)))),
     candidateMaxQueueMs: Math.min(30_000, Math.max(100, positiveNumber(env.CANDIDATE_MAX_QUEUE_MS, 2500))),
   };
 }

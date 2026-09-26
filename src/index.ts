@@ -132,22 +132,37 @@ async function tick(): Promise<void> {
           ]);
           if (!meta) throw new Error('No RPC metadata');
           store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
-          return async (amount: number, fixedBlock?: bigint) => {
-            const q = await simulateRoute(client, meta, route, amount, value, { extraCostsUsd: 0.05, safetyBps: 100, source, blockNumber: fixedBlock });
+          const persistQuote = (q: Awaited<ReturnType<typeof simulateRoute>>) => {
             const costBreakdown = quoteCostBreakdown(q);
             store.record('executable_quotes', key, { discoveredAtMs, route, quote: q, netProfitUsd: costBreakdown.netProfitUsd, costBreakdown, screen }, q);
-            return q;
+          };
+          return {
+            quote: async (amount: number, fixedBlock?: bigint, persist = true) => {
+              const q = await simulateRoute(client, meta, route, amount, value, { extraCostsUsd: 0.05, safetyBps: 100, source, blockNumber: fixedBlock });
+              if (persist) persistQuote(q);
+              return q;
+            },
+            persistQuote,
           };
         },
-        quote: quote => quote(trackedInput),
-        size: async quote => {
+        quote: context => context.quote(trackedInput),
+        size: async context => {
           const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
-          return optimizeRoute(route, (_r, amount) => quote(amount, blockNumber), {
+          const completedQuotes: Awaited<ReturnType<typeof simulateRoute>>[] = [];
+          const best = await optimizeRoute(route, async (_r, amount) => {
+            const q = await context.quote(amount, blockNumber, false);
+            completedQuotes.push(q);
+            return q;
+          }, {
             capitalUsd: config.paperCapitalUsd,
             maxTradeUsd: config.maxCandidateTradeUsd,
             steps: 8,
             minNetProfitUsd: config.minNetProfitUsd,
+            quoteConcurrency: config.sizingQuoteConcurrency,
           });
+          completedQuotes.sort((a,b) => a.inputUsd - b.inputUsd);
+          for (const q of completedQuotes) context.persistQuote(q);
+          return best;
         },
         profit: netProfit,
         recordSample: sample => store.record('opportunity_lifecycle', key, { ...sample, trackedInputUsd: trackedInput }, { timestampMs: sample.completedMs, blockNumber: sample.quote?.blockNumber ?? null, source }),
@@ -202,6 +217,7 @@ async function tick(): Promise<void> {
     valuationFetches,
     probeConcurrency: config.probeConcurrency,
     sizingConcurrency: config.sizingConcurrency,
+    sizingQuoteConcurrency: config.sizingQuoteConcurrency,
     candidateMaxQueueMs: config.candidateMaxQueueMs,
     scheduler: runtimeMetrics,
   }, { timestampMs: tickCompletedMs, blockNumber: null, source: 'arb-radar:scheduler' });
@@ -221,7 +237,7 @@ let stopping = false;
 process.on('SIGINT', () => { stopping = true; });
 process.on('SIGTERM', () => { stopping = true; });
 try {
-  console.log('arb-radar v0.5 — PAPER RESEARCH ONLY');
+  console.log('arb-radar v0.7 — PAPER RESEARCH ONLY');
   if (await client.getChainId() !== robinhoodChain.id) throw new Error('Wrong RPC chain');
   do {
     try { await tick(); } catch (error) { console.error(String(error)); if (!process.argv.includes('--watch')) process.exitCode = 1; }

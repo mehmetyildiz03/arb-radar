@@ -278,19 +278,23 @@ test('scheduler concurrency configuration is user-settable but safely bounded', 
   const configured=loadConfig({
     PROBE_CONCURRENCY:'3',
     SIZING_CONCURRENCY:'2',
+    SIZING_QUOTE_CONCURRENCY:'2',
     CANDIDATE_MAX_QUEUE_MS:'1750'
   });
   assert.equal(configured.probeConcurrency,3);
   assert.equal(configured.sizingConcurrency,2);
+  assert.equal(configured.sizingQuoteConcurrency,2);
   assert.equal(configured.candidateMaxQueueMs,1750);
 
   const clamped=loadConfig({
     PROBE_CONCURRENCY:'999',
     SIZING_CONCURRENCY:'999',
+    SIZING_QUOTE_CONCURRENCY:'999',
     CANDIDATE_MAX_QUEUE_MS:'10'
   });
   assert.equal(clamped.probeConcurrency,8);
   assert.equal(clamped.sizingConcurrency,4);
+  assert.equal(clamped.sizingQuoteConcurrency,4);
   assert.equal(clamped.candidateMaxQueueMs,100);
 });
 
@@ -339,4 +343,65 @@ test('candidate timing separates queue preparation quote barrier queue and sizin
   assert.equal(result.timing.sizingDurationMs,100);
   assert.equal(result.timing.sizingTotalPhaseMs,140);
   assert.equal(timing.length,1);
+});
+
+
+test('parallel sizing preserves the exact sequential optimizer result', async () => {
+  const quoteFor = async (_route, inputUsd) => ({
+    inputUsd,
+    outputUsd: inputUsd + Math.sin(inputUsd / 7) * 0.4 + inputUsd * 0.02,
+    gasUsd: 0.05,
+    extraCostsUsd: 0.01,
+    safetyMarginUsd: 0.01,
+  });
+  const options={capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,minNetProfitUsd:0};
+  const sequential=await optimizeRoute(route,quoteFor,{...options,quoteConcurrency:1});
+  const parallel=await optimizeRoute(route,quoteFor,{...options,quoteConcurrency:4});
+  assert.deepEqual(parallel,sequential);
+});
+
+test('parallel sizing never exceeds configured quote concurrency', async () => {
+  let active=0,maxActive=0;
+  const q=await optimizeRoute(route,async(_route,inputUsd)=>{
+    active++;maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
+  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:3});
+  assert.ok(q);
+  assert.equal(maxActive,3);
+});
+
+test('parallel sizing remains fail-closed and stops scheduling after first rejection', async () => {
+  let started=0;
+  await assert.rejects(()=>optimizeRoute(route,async(_route,inputUsd)=>{
+    started++;
+    if(inputUsd===1)throw Error('rpc failure');
+    await new Promise(resolve=>setTimeout(resolve,5));
+    return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
+  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:2}),/rpc failure/);
+  assert.ok(started<=2);
+});
+
+
+test('simulation overlaps independent gas estimates and gas-price read', async () => {
+  let active=0,maxActive=0;
+  const overlap=async value=>{
+    active++;maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    return value;
+  };
+  const client={
+    getBlock:async()=>({number:50n,hash:'0xabc'}),
+    simulateContract:async args=>({result:args.functionName==='buyWithEth'?123n:parseEther('0.04')}),
+    estimateContractGas:async()=>overlap(100000n),
+    getGasPrice:async()=>overlap(1000000000n),
+  };
+  const q=await simulateRoute(client,tradable(),route,100,
+    {usdPerEth:3000,timestampMs:Date.now(),source:'fixture'},
+    {extraCostsUsd:.05,safetyBps:100,source:'fixture'});
+  assert.equal(maxActive,3);
+  assert.equal(q.gasUnits,240000n);
+  assert.equal(q.outputUsd,120);
 });
