@@ -189,6 +189,24 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function discoveryMs(payload: Record<string,unknown>, row: ObservationRow): number {
+  const direct=num(payload.discoveredAtMs);
+  if (direct !== null) return direct;
+  const timing=payload.measurementTiming as Record<string,unknown> | undefined;
+  const timingDiscovery=num(timing?.discoveredAtMs);
+  if (timingDiscovery !== null) return timingDiscovery;
+  const sampleDiscovery=num(payload.discoveredAtMs);
+  if (sampleDiscovery !== null) return sampleDiscovery;
+  const lastSegment=row.observation_key.split(':').at(-1);
+  const fromKey=lastSegment === undefined ? NaN : Number(lastSegment);
+  return Number.isFinite(fromKey) ? fromKey : row.timestamp_ms;
+}
+
+function discoveredInsideWindow(payload: Record<string,unknown>, row: ObservationRow, fromMs: number, toMs: number): boolean {
+  const discovered=discoveryMs(payload,row);
+  return discovered >= fromMs && discovered <= toMs;
+}
+
 function pct(numerator: number, denominator: number): number | null {
   return denominator > 0 ? (numerator / denominator) * 100 : null;
 }
@@ -260,7 +278,7 @@ function routeFields(payload: Record<string, unknown>): {
   };
 }
 
-function summarizeOpportunities(rows: ObservationRow[]): {
+function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: number): {
   opportunities: OpportunitySummary[];
   paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
   pnlTraces: {
@@ -280,7 +298,7 @@ function summarizeOpportunities(rows: ObservationRow[]): {
 
   for (const row of rows) {
     const payload = parsePayload(row.payload);
-    if (!payload) continue;
+    if (!payload || !discoveredInsideWindow(payload,row,fromMs,toMs)) continue;
     const fields = routeFields(payload);
     const quote = payload.quote as Record<string,unknown> | undefined;
     const netProfitUsd = num(payload.netProfitUsd);
@@ -292,7 +310,7 @@ function summarizeOpportunities(rows: ObservationRow[]): {
     if (!current) {
       groups.set(row.observation_key, {
         key: row.observation_key,
-        timestampMs: row.timestamp_ms,
+        timestampMs: discoveryMs(payload,row),
         status: isUnavailable ? 'unavailable' : (netProfitUsd !== null && netProfitUsd > 0 ? 'positive' : 'nonpositive'),
         token: fields.token,
         buyMarket: fields.buyMarket,
@@ -518,7 +536,7 @@ export function buildDashboardSnapshot(
       if (typeof route?.token === 'string') tokens.add(route.token.toLowerCase());
     }
 
-    const { opportunities: allOpportunities, paperPnl, pnlTraces, latestPositiveOpportunity } = summarizeOpportunities(quoteRows);
+    const { opportunities: allOpportunities, paperPnl, pnlTraces, latestPositiveOpportunity } = summarizeOpportunities(quoteRows,fromMs,generatedAtMs);
     for (const item of allOpportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
 
     const quoteBackedCandidates = allOpportunities.filter(x=>x.quoteCount > 0).length;
@@ -541,7 +559,7 @@ export function buildDashboardSnapshot(
 
     for (const row of lifecycle) {
       const payload=parsePayload(row.payload);
-      if (!payload) continue;
+      if (!payload || !discoveredInsideWindow(payload,row,fromMs,generatedAtMs)) continue;
       const timing=payload.measurementTiming as Record<string,unknown> | undefined;
       if (timing && !seenTimingKeys.has(row.observation_key)) {
         seenTimingKeys.add(row.observation_key);
