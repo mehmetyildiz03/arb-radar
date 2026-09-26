@@ -39,16 +39,32 @@ class Semaphore {
   private readonly waiters: Array<() => void> = [];
   constructor(readonly limit: number, private readonly onActive?: (active: number) => void) {}
 
-  async run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>(resolve => this.waiters.push(resolve));
-    this.active++;
+  private async acquire(): Promise<void> {
+    if (this.active < this.limit) {
+      this.active++;
+      this.onActive?.(this.active);
+      return;
+    }
+    await new Promise<void>(resolve => this.waiters.push(resolve));
+    // A released slot is transferred directly to this waiter; active stays unchanged.
+  }
+
+  private release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
+    this.active--;
     this.onActive?.(this.active);
+  }
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    await this.acquire();
     try {
       return await work();
     } finally {
-      this.active--;
-      this.onActive?.(this.active);
-      this.waiters.shift()?.();
+      this.release();
     }
   }
 }
