@@ -90,7 +90,7 @@ test('dashboard uses the time window for quality metrics and keeps display limit
       store.record('rpc_latency_samples','eth_call',{durationMs:d,status:'200'},{timestampMs:at+10+i,blockNumber:null,source:'fixture'});
     }
     store.record('radar_runtime','tick:fixture',{
-      durationMs:320,valuationFetches:1,probeConcurrency:2,sizingConcurrency:1,candidateMaxQueueMs:2500,
+      durationMs:320,valuationFetches:1,probeConcurrency:2,sizingConcurrency:1,sizingQuoteConcurrency:2,candidateMaxQueueMs:2500,
       scheduler:{queued:5,droppedStale:1,probesStarted:4,probesCompleted:4,sizingStarted:3,sizingCompleted:3,maxActiveProbes:2,maxActiveSizing:1}
     },{timestampMs:at+30,blockNumber:null,source:'arb-radar:scheduler'});
     store.db.prepare("INSERT INTO executable_quotes(timestamp_ms,block_number,source,observation_key,payload) VALUES (?,?,?,?,?)")
@@ -135,6 +135,7 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.runtime.sizingCompleted,3);
     assert.equal(snapshot.runtime.probeConcurrency,2);
     assert.equal(snapshot.runtime.sizingConcurrency,1);
+    assert.equal(snapshot.runtime.sizingQuoteConcurrency,2);
     assert.equal(snapshot.runtime.tickDurationMs,320);
     assert.equal(snapshot.runtime.valuationFetches,1);
 
