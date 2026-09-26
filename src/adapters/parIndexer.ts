@@ -30,15 +30,22 @@ function normalizeMarket(raw: unknown, fallbackIndex: number): MarketSnapshot | 
   const row = asObject(raw);
   if (!row) return null;
 
-  const pairToken = asAddress(row.pairToken) ?? "0x0000000000000000000000000000000000000000";
+  const pairToken = asAddress(row.pairToken);
+  if (!pairToken) return null;
   const priceEth = asNumber(row.lastPriceEth ?? row.priceEth);
   if (!(priceEth && priceEth > 0)) return null;
 
   const poolIdString = asString(row.poolId);
-  const poolId = poolIdString?.startsWith("0x") ? (poolIdString as `0x${string}`) : undefined;
+  const poolId = poolIdString && /^0x[0-9a-fA-F]{64}$/.test(poolIdString) ? (poolIdString.toLowerCase() as `0x${string}`) : undefined;
+  const index = asNumber(row.index ?? row.market) ?? fallbackIndex;
+  const marketFee = asNumber(row.poolFee);
+  if (!Number.isInteger(index) || index < 0 || (marketFee !== undefined && (!Number.isInteger(marketFee) || marketFee < 0 || marketFee >= 1_000_000))) return null;
 
   return {
-    index: asNumber(row.index ?? row.market) ?? fallbackIndex,
+    stale: row.lastPriceEthStale === true,
+    priceAtMs: asNumber(row.lastTradeAt) === undefined ? undefined : asNumber(row.lastTradeAt)! * 1000,
+    poolFeeUnits: marketFee,
+    index,
     pairToken,
     quoteSymbol: asString(row.quoteSymbol) ?? `MARKET_${fallbackIndex}`,
     poolId,
@@ -53,6 +60,8 @@ export function normalizeLaunch(raw: unknown): LaunchSnapshot | null {
 
   const token = asAddress(row.token);
   if (!token) return null;
+  const fee = asNumber(row.poolFee);
+  if (fee === undefined || !Number.isInteger(fee) || fee < 0 || fee >= 1_000_000) return null;
 
   const rawMarkets = Array.isArray(row.markets) ? row.markets : [];
   const markets = rawMarkets
@@ -68,7 +77,7 @@ export function normalizeLaunch(raw: unknown): LaunchSnapshot | null {
     symbol: asString(row.symbol) ?? token.slice(0, 8),
     name: asString(row.name),
     kind,
-    poolFeeUnits: asNumber(row.poolFee) ?? 10_000,
+    poolFeeUnits: fee,
     creatorTaxBps: asNumber(row.creatorTaxBps),
     marketCount,
     markets,
