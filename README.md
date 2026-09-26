@@ -1,4 +1,4 @@
-# Arb Radar v0.2
+# Arb Radar v0.3
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -13,11 +13,13 @@ npm ci
 npm run check
 npm start
 npm run watch
+npm run dev
+npm run dashboard
 npm run replay
 npm run sequencer
 ```
 
-`start` performs one public read-only scan; `watch` repeats after each scan. `replay` is offline and reproduces the committed LONG5 report. `sequencer` observes for 15 seconds by default and exits. Tests require no network or secrets. CI checks Node 22 and 24.
+`start` performs one public read-only scan; `watch` repeats after each scan. `dev` runs the paper radar watch process together with the local read-only dashboard at `http://127.0.0.1:4173`. `dashboard` opens only the dashboard against an existing SQLite database. `replay` is offline and reproduces the committed LONG5 report. `sequencer` observes for 15 seconds by default and exits. Tests require no network or secrets. CI checks Node 22 and 24.
 
 ## Data and calculations
 
@@ -45,6 +47,8 @@ npm run sequencer
 | MIN_NET_PROFIT_USD | 0.05 | Sizing selection threshold |
 | RECENT_WINDOW_SECONDS | 60 | Maximum screening price age |
 | FEED_SECONDS | 15 | Bounded sequencer experiment, max 300 |
+| DASHBOARD_HOST | 127.0.0.1 | Local dashboard bind address |
+| DASHBOARD_PORT | 4173 | Local dashboard port |
 
 HTTP retry/backoff is bounded and honors Retry-After (capped at 10 seconds). Public endpoint errors are recorded; paid keys are not required. Single-scan discovery failure exits nonzero; watch mode continues. Ctrl+C stops watch after the current scan.
 
@@ -55,3 +59,13 @@ HTTP retry/backoff is bounded and honors Retry-After (capped at 10 seconds). Pub
 The sequencer experiment verifies the Nitro feed signature against a pinned public authority, decodes signed transaction batches, marks next-block candidates, and checks a log-derived shadow price against canonical RPC slot0. Gaps/reorgs invalidate the shadow cache. Calldata alone never updates pool prices. This is a limited reconciliation experiment, not a full speculative EVM or a demonstrated latency advantage. The feed is already ordered, not a public mempool. Authority rotation requires re-verification and a code update; failures are rejected.
 
 See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [handoff specification](docs/ASTRA_HANDOFF.md).
+
+
+## Local dashboard
+
+The v0.3 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
+
+- `/api/health`
+- `/api/snapshot?limit=120`
+
+It shows recent qualifying fee-floor screens, amount-sensitive paper quotes, discovery-to-first-quote timing, sizing duration, RPC latency, and total dataset counts. A missing database renders an empty waiting state instead of creating research rows. The HTTP server binds to localhost by default.
