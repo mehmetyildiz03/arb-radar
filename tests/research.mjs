@@ -15,7 +15,7 @@ import { ShadowState } from '../dist/research/shadow.js';
 import { replayTrades } from '../dist/research/replay.js';
 import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.js';
 import { measureCandidate } from '../dist/research/measurement.js';
-import { runStagedCandidates, StaleCandidateError } from '../dist/research/scheduler.js';
+import { runStagedCandidates, sharedAsyncResource, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 
 const token = '0x1111111111111111111111111111111111111111';
@@ -257,4 +257,13 @@ test('staged scheduler respects configured probe and sizing concurrency', async 
   await promise;
   assert.equal(maxProbe,2);
   assert.equal(maxSizing,2);
+});
+
+
+test('shared async resource performs one underlying fetch per tick scope', async () => {
+  let calls=0;
+  const getValue=sharedAsyncResource(async()=>{calls++;await Promise.resolve();return 42});
+  const values=await Promise.all([getValue(),getValue(),getValue(),getValue()]);
+  assert.deepEqual(values,[42,42,42,42]);
+  assert.equal(calls,1);
 });
