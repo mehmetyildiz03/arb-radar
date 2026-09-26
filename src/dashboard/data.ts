@@ -119,22 +119,24 @@ export function buildDashboardSnapshot(path = 'data/radar.sqlite', limit = 100):
     },0);
 
     let positiveExecutableQuotes=0, unavailableQuotes=0;
-    const opportunities = quotes.flatMap(row => {
+    const opportunities: Array<Record<string, unknown>> = [];
+    for (const row of quotes) {
       const payload=parsePayload(row.payload);
-      if (!payload) return [];
+      if (!payload) continue;
       if (payload.status === 'unavailable') {
         unavailableQuotes++;
-        return [{ key:row.observation_key,timestampMs:row.timestamp_ms,status:'unavailable',reason:String(payload.reason ?? 'unavailable'),source:row.source }];
+        opportunities.push({ key:row.observation_key,timestampMs:row.timestamp_ms,status:'unavailable',reason:String(payload.reason ?? 'unavailable'),source:row.source });
+        continue;
       }
       const quote = payload.quote as Record<string,unknown> | undefined;
       const route = payload.route as Record<string,unknown> | undefined;
       const screen = payload.screen as Record<string,unknown> | undefined;
       const netProfitUsd=num(payload.netProfitUsd);
-      if (!quote || !route || netProfitUsd === null) return [];
+      if (!quote || !route || netProfitUsd === null) continue;
       if (netProfitUsd > 0) positiveExecutableQuotes++;
       const buy=route.buy as Record<string,unknown> | undefined;
       const sell=route.sell as Record<string,unknown> | undefined;
-      return [{
+      opportunities.push({
         key:row.observation_key,
         timestampMs:row.timestamp_ms,
         status: netProfitUsd > 0 ? 'positive' : 'nonpositive',
@@ -150,8 +152,8 @@ export function buildDashboardSnapshot(path = 'data/radar.sqlite', limit = 100):
         netProfitUsd,
         blockNumber:quote.blockNumber ?? row.block_number,
         source:row.source,
-      }];
-    });
+      });
+    }
 
     const timings = lifecycle.flatMap(row => {
       const payload=parsePayload(row.payload);
