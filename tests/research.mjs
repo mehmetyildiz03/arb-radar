@@ -15,6 +15,7 @@ import { ShadowState } from '../dist/research/shadow.js';
 import { replayTrades } from '../dist/research/replay.js';
 import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.js';
 import { measureCandidate } from '../dist/research/measurement.js';
+import { runStagedCandidates, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 
 const token = '0x1111111111111111111111111111111111111111';
@@ -193,4 +194,67 @@ test('original LONG5 is address-pinned and never substituted when unavailable', 
   const noHistory=originalReport({...fixture,trades:{...fixture.trades,status:200,body:[]}});
   assert.equal(noHistory.status,'historical-trades-unavailable');assert.equal(noHistory.netPnlUsd,null);
   assert.throws(()=>originalReport({...fixture,token}),/target mismatch/);
+});
+
+
+test('staged scheduler lets later candidates probe before earlier candidate sizing', async () => {
+  let now=0;
+  const events=[];
+  const candidates=[
+    {key:'A',discoveredAtMs:0,priority:10,value:'A'},
+    {key:'B',discoveredAtMs:0,priority:9,value:'B'},
+  ];
+  const result=await runStagedCandidates(candidates,{
+    probeConcurrency:1,sizingConcurrency:1,maxQueueAgeMs:10_000,now:()=>now
+  },async(candidate,controls)=>measureCandidate({
+    discoveredAtMs:candidate.discoveredAtMs,
+    withProbePhase:controls.withProbePhase,
+    beforeSizing:controls.waitForProbeStage,
+    withSizingPhase:controls.withSizingPhase,
+    prepare:async()=>candidate.value,
+    quote:async value=>{events.push('probe:'+value);now+=10;return 1},
+    size:async value=>{events.push('size:'+value);now+=100;return value},
+    profit:q=>q,recordSample:()=>{},recordTiming:()=>{},
+  },{now:()=>now,sleep:async ms=>{now+=ms}}));
+  assert.equal(result.every(x=>x.status==='fulfilled'),true);
+  assert.deepEqual(events.slice(0,2),['probe:A','probe:B']);
+  assert.ok(events.indexOf('size:A')>events.indexOf('probe:B'));
+});
+
+test('staged scheduler drops stale candidates before expensive probe work', async () => {
+  let now=5000,work=0,metrics;
+  const [result]=await runStagedCandidates([
+    {key:'stale',discoveredAtMs:0,priority:1,value:null}
+  ],{
+    probeConcurrency:2,sizingConcurrency:1,maxQueueAgeMs:1000,now:()=>now,onMetrics:m=>{metrics=m}
+  },async(_candidate,controls)=>controls.withProbePhase(async()=>{work++;return 1}));
+  assert.equal(result.status,'rejected');
+  assert.ok(result.reason instanceof StaleCandidateError);
+  assert.equal(work,0);
+  assert.equal(metrics.droppedStale,1);
+  assert.equal(metrics.probesStarted,0);
+});
+
+test('staged scheduler respects configured probe and sizing concurrency', async () => {
+  let activeProbe=0,maxProbe=0,activeSizing=0,maxSizing=0;
+  const gate=[]; let release;
+  const wait=new Promise(r=>{release=r});
+  const candidates=Array.from({length:4},(_,i)=>({key:String(i),discoveredAtMs:0,priority:10-i,value:i}));
+  const promise=runStagedCandidates(candidates,{
+    probeConcurrency:2,sizingConcurrency:2,maxQueueAgeMs:10_000,now:()=>0
+  },async(candidate,controls)=>{
+    await controls.withProbePhase(async()=>{
+      activeProbe++;maxProbe=Math.max(maxProbe,activeProbe);gate.push(candidate.key);
+      if(gate.length===2)release();
+      await wait;activeProbe--;
+    });
+    await controls.waitForProbeStage();
+    await controls.withSizingPhase(async()=>{
+      activeSizing++;maxSizing=Math.max(maxSizing,activeSizing);
+      await Promise.resolve();activeSizing--;
+    });
+  });
+  await promise;
+  assert.equal(maxProbe,2);
+  assert.equal(maxSizing,2);
 });
