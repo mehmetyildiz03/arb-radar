@@ -8,6 +8,7 @@ export interface OptimizeOptions {
   minTradeUsd?: number;
   steps?: number;
   minNetProfitUsd?: number;
+  quoteConcurrency?: number;
 }
 
 function candidateSizes(options: OptimizeOptions): number[] {
@@ -28,34 +29,70 @@ function candidateSizes(options: OptimizeOptions): number[] {
   return [...values].sort((a, b) => a - b);
 }
 
+async function mapBounded<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const limit = Math.min(8, Math.max(1, Math.floor(Number.isFinite(concurrency) ? concurrency : 1)));
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  async function runner(): Promise<void> {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index]!, index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runner()));
+  return results;
+}
+
+function opportunityFromQuote(
+  route: DirectedRoute,
+  inputUsd: number,
+  quote: ExecutionQuote,
+  options: OptimizeOptions,
+): OptimizedOpportunity | null {
+  if (![quote.inputUsd, quote.outputUsd, quote.gasUsd, quote.extraCostsUsd ?? 0, quote.safetyMarginUsd ?? 0].every(n => Number.isFinite(n) && n >= 0) ||
+      Math.abs(quote.inputUsd - inputUsd) > 1e-7) return null;
+
+  const gasUsd = Math.max(0, quote.gasUsd || 0);
+  const extraCostsUsd = (quote.extraCostsUsd ?? 0) + (quote.safetyMarginUsd ?? 0);
+  if (quote.inputUsd + gasUsd + (quote.extraCostsUsd ?? 0) > options.capitalUsd) return null;
+  const netProfitUsd = quote.outputUsd - quote.inputUsd - gasUsd - extraCostsUsd;
+  const netReturnPct = quote.inputUsd > 0 ? (netProfitUsd / quote.inputUsd) * 100 : -Infinity;
+
+  return {
+    route,
+    inputUsd: quote.inputUsd,
+    outputUsd: quote.outputUsd,
+    gasUsd,
+    extraCostsUsd,
+    netProfitUsd,
+    netReturnPct,
+  };
+}
+
 export async function optimizeRoute(
   route: DirectedRoute,
   quoteProvider: QuoteProvider,
   options: OptimizeOptions,
 ): Promise<OptimizedOpportunity | null> {
+  const sizes = candidateSizes(options);
+  const quotes = await mapBounded(
+    sizes,
+    options.quoteConcurrency ?? 1,
+    inputUsd => quoteProvider(route, inputUsd),
+  );
+
   let best: OptimizedOpportunity | null = null;
-
-  for (const inputUsd of candidateSizes(options)) {
-    const quote = await quoteProvider(route, inputUsd);
-    if (![quote.inputUsd, quote.outputUsd, quote.gasUsd, quote.extraCostsUsd ?? 0, quote.safetyMarginUsd ?? 0].every(n => Number.isFinite(n) && n >= 0) || Math.abs(quote.inputUsd - inputUsd) > 1e-7) continue;
-
-    const gasUsd = Math.max(0, quote.gasUsd || 0);
-    const extraCostsUsd = (quote.extraCostsUsd ?? 0) + (quote.safetyMarginUsd ?? 0);
-    if (quote.inputUsd + gasUsd + (quote.extraCostsUsd ?? 0) > options.capitalUsd) continue;
-    const netProfitUsd = quote.outputUsd - quote.inputUsd - gasUsd - extraCostsUsd;
-    const netReturnPct = quote.inputUsd > 0 ? (netProfitUsd / quote.inputUsd) * 100 : -Infinity;
-
-    const current: OptimizedOpportunity = {
-      route,
-      inputUsd: quote.inputUsd,
-      outputUsd: quote.outputUsd,
-      gasUsd,
-      extraCostsUsd,
-      netProfitUsd,
-      netReturnPct,
-    };
-
-    if (best === null || current.netProfitUsd > best.netProfitUsd) best = current;
+  for (let index = 0; index < sizes.length; index++) {
+    const current = opportunityFromQuote(route, sizes[index]!, quotes[index]!, options);
+    if (current && (best === null || current.netProfitUsd > best.netProfitUsd)) best = current;
   }
 
   if (best === null || best.netProfitUsd <= 0 || best.netProfitUsd < (options.minNetProfitUsd ?? 0)) return null;
