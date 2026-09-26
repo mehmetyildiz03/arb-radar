@@ -15,6 +15,7 @@ import { ShadowState } from '../dist/research/shadow.js';
 import { replayTrades } from '../dist/research/replay.js';
 import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.js';
 import { measureCandidate } from '../dist/research/measurement.js';
+import { quoteCostBreakdown } from '../dist/research/costs.js';
 import { runStagedCandidates, sharedAsyncResource, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 import { loadConfig } from '../dist/config.js';
@@ -84,8 +85,11 @@ function tradable() {
 test('simulator quotes selected markets at one block, includes routing, gas and safety', async () => {
   const calls=[];const meta=tradable();
   const client={getBlock:async()=>({number:50n,hash:'0xabc'}),simulateContract:async args=>{calls.push(args);return {result:args.functionName==='buyWithEth'?123n:parseEther('0.04')}},estimateContractGas:async()=>100000n,getGasPrice:async()=>1000000000n};
-  const q=await simulateRoute(client,meta,route,100,{usdPerEth:3000,timestampMs:Date.now(),source:'fixture'},{extraCostsUsd:0.05,safetyBps:100,source:'fixture'});
+  let profileClock=0;
+  const q=await simulateRoute(client,meta,route,100,{usdPerEth:3000,timestampMs:Date.now(),source:'fixture'},{extraCostsUsd:0.05,safetyBps:100,source:'fixture',clockNow:()=>profileClock+=5});
   assert.equal(q.outputUsd,120);assert.equal(q.gasUnits,240000n);assert.equal(q.safetyMarginUsd,1.2);assert.ok(netProfit(q)>0);
+  assert.equal(q.profile.blockReadMs,5);assert.equal(q.profile.buySimulationMs,5);assert.equal(q.profile.sellSimulationMs,5);
+  assert.ok(q.profile.totalMs>=q.profile.blockReadMs+q.profile.buySimulationMs+q.profile.sellSimulationMs);
   assert.equal(calls[0].blockNumber,50n);assert.equal(calls[1].blockNumber,50n);assert.equal(calls[0].args[1][0].market,0);assert.equal(calls[1].args[1][0].market,1);assert.equal(calls[1].args[1][0].amountIn,123n);assert.equal(calls[1].args[1][0].hops.length,1);
 });
 test('overlapping pools and absent reference routes are excluded',()=>{
@@ -288,4 +292,51 @@ test('scheduler concurrency configuration is user-settable but safely bounded', 
   assert.equal(clamped.probeConcurrency,8);
   assert.equal(clamped.sizingConcurrency,4);
   assert.equal(clamped.candidateMaxQueueMs,100);
+});
+
+
+test('cost breakdown is arithmetically exact and never invents embedded fee/slippage components', () => {
+  const gasKilled=quoteCostBreakdown({inputUsd:10,outputUsd:10.6,gasUsd:.7,extraCostsUsd:.05,safetyMarginUsd:.1});
+  assert.equal(Number(gasKilled.grossQuotedEdgeUsd.toFixed(8)),.6);
+  assert.equal(Number(gasKilled.explicitCostsUsd.toFixed(8)),.85);
+  assert.equal(Number(gasKilled.netProfitUsd.toFixed(8)),-.25);
+  assert.equal(gasKilled.reason,'gas-erased-quoted-edge');
+  assert.equal(gasKilled.embeddedRoutingMarketEffect,'included-in-router-output-not-separately-observable');
+
+  const routeNegative=quoteCostBreakdown({inputUsd:10,outputUsd:9.9,gasUsd:.01,extraCostsUsd:0,safetyMarginUsd:0});
+  assert.equal(routeNegative.reason,'quoted-route-negative-before-explicit-costs');
+
+  const safetyKilled=quoteCostBreakdown({inputUsd:10,outputUsd:10.5,gasUsd:.1,extraCostsUsd:.1,safetyMarginUsd:.4});
+  assert.equal(Number(safetyKilled.netProfitUsd.toFixed(8)),-.1);
+  assert.equal(safetyKilled.reason,'safety-margin-erased-remaining-edge');
+
+  const positive=quoteCostBreakdown({inputUsd:10,outputUsd:11,gasUsd:.1,extraCostsUsd:.05,safetyMarginUsd:.1});
+  assert.equal(Number(positive.netProfitUsd.toFixed(8)),.75);
+  assert.equal(positive.reason,'positive-after-explicit-costs');
+});
+
+test('candidate timing separates queue preparation quote barrier queue and sizing execution', async () => {
+  let now=100;
+  const timing=[];
+  const result=await measureCandidate({
+    discoveredAtMs:0,
+    withProbePhase:async work=>{now+=20;return work()},
+    beforeSizing:async()=>{now+=30},
+    withSizingPhase:async work=>{now+=40;return work()},
+    prepare:async()=>{now+=10;return null},
+    quote:async()=>{now+=25;return 1},
+    size:async()=>{now+=100;return 'best'},
+    profit:q=>q,
+    recordSample:()=>{},
+    recordTiming:t=>timing.push(t),
+  },{now:()=>now,sleep:async ms=>{now+=ms}});
+  assert.equal(result.timing.queueDelayMs,120);
+  assert.equal(result.timing.preparationDurationMs,10);
+  assert.equal(result.timing.firstQuoteDurationMs,25);
+  assert.equal(result.timing.discoveryToFirstQuoteCompletedMs,155);
+  assert.equal(result.timing.sizingBarrierWaitMs,30);
+  assert.equal(result.timing.sizingQueueWaitMs,40);
+  assert.equal(result.timing.sizingDurationMs,100);
+  assert.equal(result.timing.sizingTotalPhaseMs,140);
+  assert.equal(timing.length,1);
 });
