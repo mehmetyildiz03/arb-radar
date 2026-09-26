@@ -151,6 +151,17 @@ function render(data){
   setText('uniqueTokens',nf.format(data.radar.uniqueTokens));
   setText('unavailableCount',nf.format(data.radar.unavailableQuotes));
   setText('analysisCap','analysis cap '+nf.format(data.window.analysisRowCap)+' / tablo');
+  const runtime=data.runtime??{};
+  setText('runtimeTick',runtime.lastTickAtMs?'son tick '+ago(runtime.lastTickAtMs):'tick bekleniyor');
+  setText('runtimeQueued',nf.format(runtime.queued??0));
+  setText('runtimeDropped',nf.format(runtime.droppedStale??0));
+  setText('runtimeProbes',nf.format(runtime.probesCompleted??0)+' / '+nf.format(runtime.probesStarted??0));
+  setText('runtimeSizing',nf.format(runtime.sizingCompleted??0)+' / '+nf.format(runtime.sizingStarted??0));
+  setText('runtimeProbeConcurrency',runtime.probeConcurrency??'—');
+  setText('runtimeSizingConcurrency',runtime.sizingConcurrency??'—');
+  setText('runtimeDuration',fmtMs(runtime.tickDurationMs));
+  setText('runtimeValuation',nf.format(runtime.valuationFetches??0));
+
   const truncated=Object.values(data.window.truncated).some(Boolean);
   setText('qualityNote',truncated?'Analiz satır sınırına ulaştı; bu pencerenin bazı oranları kısmi olabilir. Quote tamamlanması capture/inclusion değildir.':'Quote tamamlanması capture/inclusion değildir.');
   renderSpotlight(data.radar.latestPositiveOpportunity);
