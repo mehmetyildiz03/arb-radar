@@ -181,7 +181,12 @@ async function tick(): Promise<void> {
     }
     unavailable++;
     const route = result.candidate.value.route;
-    store.record('executable_quotes', result.candidate.key, { status: 'unavailable', reason: String(result.reason), route }, { timestampMs: Date.now(), blockNumber: null, source });
+    store.record('executable_quotes', result.candidate.key, {
+      status: 'unavailable',
+      reason: String(result.reason),
+      route,
+      discoveredAtMs: result.candidate.discoveredAtMs,
+    }, { timestampMs: Date.now(), blockNumber: null, source });
     console.warn(json({ key: result.candidate.key, quoteUnavailable: String(result.reason) }));
   }
 

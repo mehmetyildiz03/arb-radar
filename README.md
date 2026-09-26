@@ -1,4 +1,4 @@
-# Arb Radar v0.6
+# Arb Radar v0.6.1
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -105,3 +105,8 @@ A negative result is classified by the first explicit stage that erases a previo
 The P&L chart now separates **first probe** from **best observed candidate** values so optimizer/lifecycle requotes do not appear as a single stream of realized gains or losses.
 
 The pipeline profiler aggregates median/p95 for queue delay, preparation, first quote, sizing barrier, sizing queue and sizing execution. First-probe simulation profiles additionally time block read, buy simulation, sell simulation, buy/sell gas estimation, gas-price read and block confirmation. These are local observation timings only; they do not measure transaction inclusion.
+
+
+## v0.6.1 dashboard window semantics
+
+Dashboard analysis windows are candidate-discovery windows. A quote or lifecycle row written later does not pull an older candidate into the current 60s/5m/15m funnel. New rows persist `discoveredAtMs`; legacy standard candidate keys fall back to their timestamp suffix. This keeps fee-floor screens, quote-backed candidates, P&L traces and lifecycle profiler summaries on the same discovery-time basis.
