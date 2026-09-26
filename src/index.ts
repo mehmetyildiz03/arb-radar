@@ -147,6 +147,7 @@ async function tick(): Promise<void> {
             maxTradeUsd: config.maxCandidateTradeUsd,
             steps: 8,
             minNetProfitUsd: config.minNetProfitUsd,
+            quoteConcurrency: config.sizingQuoteConcurrency,
           });
         },
         profit: netProfit,
@@ -202,6 +203,7 @@ async function tick(): Promise<void> {
     valuationFetches,
     probeConcurrency: config.probeConcurrency,
     sizingConcurrency: config.sizingConcurrency,
+    sizingQuoteConcurrency: config.sizingQuoteConcurrency,
     candidateMaxQueueMs: config.candidateMaxQueueMs,
     scheduler: runtimeMetrics,
   }, { timestampMs: tickCompletedMs, blockNumber: null, source: 'arb-radar:scheduler' });
