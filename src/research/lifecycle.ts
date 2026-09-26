@@ -2,17 +2,19 @@ import { sleep } from '../adapters/network.js';
 
 export const lifecycleOffsets = [0, 100, 250, 500, 1000] as const;
 const epoch = Date.now() - performance.now();
-const monotonicClock = { now: () => epoch + performance.now(), sleep };
+export const monotonicClock = { now: () => epoch + performance.now(), sleep };
 export interface LifecycleSample<T> {
   targetMs: number; startedMs: number; completedMs: number; elapsedMs: number;
+  discoveredAtMs: number; deadlineMs: number; startedElapsedMs: number; deadlineMissedByMs: number;
   quote?: T; netProfitUsd: number | null; error?: string;
 }
 /** Absolute deadlines; slow RPC calls are recorded late, never relabeled as 100ms observations. */
 export async function trackLifecycle<T>(quote: () => Promise<T>, profit: (q: T) => number,
-  record: (sample: LifecycleSample<T>) => void, clock = monotonicClock): Promise<LifecycleSample<T>[]> {
-  const origin = clock.now();
+  record: (sample: LifecycleSample<T>) => void, clock = monotonicClock,
+  options: { discoveredAtMs?: number; offsets?: readonly number[] } = {}): Promise<LifecycleSample<T>[]> {
+  const origin = options.discoveredAtMs ?? clock.now();
   const samples: LifecycleSample<T>[] = [];
-  for (const targetMs of lifecycleOffsets) {
+  for (const targetMs of options.offsets ?? lifecycleOffsets) {
     await clock.sleep(Math.max(0, origin + targetMs - clock.now()));
     const startedMs = clock.now();
     let result: T | undefined; let error: string | undefined; let netProfitUsd: number | null = null;
@@ -21,7 +23,9 @@ export async function trackLifecycle<T>(quote: () => Promise<T>, profit: (q: T) 
       if (!Number.isFinite(netProfitUsd)) throw new Error('Non-finite profit');
     } catch (e) { error = String(e); netProfitUsd = null; }
     const completedMs = clock.now();
-    const sample = { targetMs, startedMs, completedMs, elapsedMs: completedMs - origin, quote: result, netProfitUsd, error };
+    const sample = { targetMs, startedMs, completedMs, elapsedMs: completedMs - origin,
+      discoveredAtMs: origin, deadlineMs: origin + targetMs, startedElapsedMs: startedMs - origin,
+      deadlineMissedByMs: Math.max(0, startedMs - origin - targetMs), quote: result, netProfitUsd, error };
     samples.push(sample); record(sample);
   }
   return samples;

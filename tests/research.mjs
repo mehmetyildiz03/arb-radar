@@ -14,6 +14,8 @@ import { ResearchStore, tables } from '../dist/research/store.js';
 import { ShadowState } from '../dist/research/shadow.js';
 import { replayTrades } from '../dist/research/replay.js';
 import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.js';
+import { measureCandidate } from '../dist/research/measurement.js';
+import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -127,4 +129,68 @@ test('simulation rejects a reorg and never falls back after a revert',async()=>{
   await assert.rejects(()=>simulateRoute(client,tradable(),route,1,value,opts),/Block changed/);
   client.simulateContract=async()=>{throw Error('revert')};
   await assert.rejects(()=>simulateRoute(client,tradable(),route,1,value,opts),/revert/);
+});
+
+test('exhaustive optimizer cannot reset discovery clock or delay first probe', async () => {
+  const discoveredAtMs = 1000;
+  let now = 1300; // Already queued for 300ms since its first qualifying screen.
+  const clock = { now: () => now, sleep: async ms => { now += ms; } };
+  const calls = [], recorded = [], timings = [];
+  const result = await measureCandidate({
+    discoveredAtMs,
+    prepare: async () => { now += 200; return {}; },
+    quote: async () => { calls.push('probe'); now += 50; return 1; },
+    size: async () => optimizeRoute(route, async (_route, inputUsd) => {
+      calls.push('size'); now += 100;
+      return { inputUsd, outputUsd: inputUsd * 1.2, gasUsd: 0.01 };
+    }, { capitalUsd: 100, maxTradeUsd: 50, steps: 8 }),
+    profit: q => q, recordSample: s => recorded.push(s), recordTiming: t => timings.push(t),
+  }, clock);
+  assert.equal(calls[0], 'probe'); assert.equal(calls.filter(c => c === 'size').length, 8);
+  assert.equal(result.timing.firstExecutableQuoteStartedMs, 1500);
+  assert.equal(result.timing.firstExecutableQuoteCompletedMs, 1550);
+  assert.equal(result.timing.sizingStartedMs, 1550); assert.equal(result.timing.sizingCompletedMs, 2350);
+  assert.equal(result.timing.discoveryToFirstQuoteCompletedMs, 550);
+  assert.equal(result.timing.sizingDurationMs, 800);
+  assert.equal(result.timing.discoveryToPostSizingLifecycleMs, 1350);
+  assert.deepEqual(recorded.map(s => s.targetMs), [0,100,250,500,1000]);
+  assert.deepEqual(recorded.map(s => s.deadlineMs), [1000,1100,1250,1500,2000]);
+  assert.equal(recorded[1].startedMs, 2350); assert.equal(recorded[1].elapsedMs, 1400);
+  assert.equal(recorded[1].deadlineMissedByMs, 1250);
+  assert.ok(recorded.every(s => s.discoveredAtMs === discoveredAtMs));
+  assert.deepEqual(timings, [result.timing]);
+});
+test('unavailable first quote and preparation failure retain timing without fake capture', async () => {
+  let now=100, sizeCalls=0; const timings=[];
+  const options={discoveredAtMs:0, prepare:async()=>null,
+    quote:async()=>{now+=25;throw Error('RPC unavailable')}, size:async()=>{sizeCalls++},
+    profit:q=>q,recordSample:()=>{},recordTiming:t=>timings.push(t)};
+  const clock={now:()=>now,sleep:async ms=>{now+=ms}};
+  const result=await measureCandidate(options,clock);
+  assert.equal(sizeCalls,0);assert.equal(result.samples[0].netProfitUsd,null);
+  assert.equal(result.timing.firstExecutableQuoteSucceeded,false);
+  assert.equal(result.timing.firstExecutableQuoteCompletedMs,125);
+  assert.equal(result.timing.sizingStartedMs,null);
+  await assert.rejects(()=>measureCandidate({...options,prepare:async()=>{throw Error('metadata unavailable')}},clock));
+  assert.equal(timings[1].discoveredAtMs,0);assert.equal(timings[1].firstExecutableQuoteStartedMs,null);
+});
+test('sizing failure persists duration and original discovery timestamp', async () => {
+  let now=10, timing;
+  await assert.rejects(()=>measureCandidate({discoveredAtMs:0,prepare:async()=>null,quote:async()=>1,
+    size:async()=>{now+=900;throw Error('sizing failed')},profit:q=>q,recordSample:()=>{},recordTiming:t=>{timing=t}
+  },{now:()=>now,sleep:async ms=>{now+=ms}}),/sizing failed/);
+  assert.equal(timing.sizingDurationMs,900);assert.equal(timing.discoveredAtMs,0);
+  assert.equal(timing.postSizingLifecycleStartedMs,null);
+});
+test('original LONG5 is address-pinned and never substituted when unavailable', () => {
+  const fixture=JSON.parse(readFileSync('tests/fixtures/long5-original.json','utf8'));
+  const report=originalReport(fixture);
+  assert.equal(report.token,originalLong5);assert.equal(report.role,'original-research-target');
+  assert.equal(report.status,'partial-indexer-history');assert.equal(report.replay.trades,2000);
+  assert.ok(report.replay.frames.every(f=>f.netPnlUsd===null&&f.bestExecutableSizeUsd===null));
+  const absent=originalReport({...fixture,launch:{...fixture.launch,status:404,body:null}});
+  assert.equal(absent.status,'launch-unavailable');assert.equal(absent.token,originalLong5);assert.equal(absent.replay,null);
+  const noHistory=originalReport({...fixture,trades:{...fixture.trades,status:200,body:[]}});
+  assert.equal(noHistory.status,'historical-trades-unavailable');assert.equal(noHistory.netPnlUsd,null);
+  assert.throws(()=>originalReport({...fixture,token}),/target mismatch/);
 });

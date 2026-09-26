@@ -7,7 +7,8 @@ import { simulateRoute, netProfit, type Valuation } from './adapters/simulation.
 import { enumerateDirectedRoutes, screenRoute } from './arbitrage/routes.js';
 import { optimizeRoute } from './arbitrage/optimizer.js';
 import { ResearchStore, json } from './research/store.js';
-import { trackLifecycle, summarizeLifecycle } from './research/lifecycle.js';
+import { monotonicClock, summarizeLifecycle } from './research/lifecycle.js';
+import { measureCandidate } from './research/measurement.js';
 
 const config = loadConfig();
 const store = new ResearchStore(process.env.RADAR_DB ?? 'data/radar.sqlite');
@@ -40,37 +41,49 @@ async function valuation(): Promise<Valuation> {
 async function tick(): Promise<void> {
   const launches = await discovery.latest();
   let candidates = 0, opportunities = 0;
-  for (const launch of launches) {
+  // Screen the whole response before slow work: queued candidates retain their original discovery time.
+  const screened = launches.map(launch => ({ launch, screens: enumerateDirectedRoutes(launch).map(route => {
+    const discoveredAtMs = monotonicClock.now();
+    return { route, discoveredAtMs, screen: screenRoute(route, 0, { nowMs: discoveredAtMs, maxAgeMs: config.recentWindowSeconds * 1000 }) };
+  }) }));
+  for (const { launch, screens } of screened) {
     const provenance = { timestampMs: Date.now(), blockNumber: null, source: config.parApiBase };
     store.record('launches', launch.token, launch, provenance);
     for (const market of launch.markets) store.record('market_snapshots', `${launch.token}:${market.index}`, market, provenance);
-    const screens = enumerateDirectedRoutes(launch).map(route => ({ route, screen: screenRoute(route, 0, { nowMs: Date.now(), maxAgeMs: config.recentWindowSeconds * 1000 }) }));
-    for (const { route, screen } of screens) store.record('route_screens', `${launch.token}:${route.buy.index}:${route.sell.index}`, { route, screen, rejected: screen === null }, provenance);
-    for (const { route, screen } of screens.filter(s => s.screen?.passesFeeFloor)) {
+    for (const { route, screen, discoveredAtMs } of screens) store.record('route_screens', `${launch.token}:${route.buy.index}:${route.sell.index}`, { route, screen, discoveredAtMs, rejected: screen === null }, { ...provenance, timestampMs: discoveredAtMs });
+    for (const { route, screen, discoveredAtMs } of screens.filter(s => s.screen?.passesFeeFloor)) {
       candidates++;
       const key = `${launch.token}:${route.buy.index}:${route.sell.index}:${Date.now()}`;
       try {
-        const meta = await discovery.metadata(launch.token);
-        if (!meta) throw new Error('No RPC metadata');
-        store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
-        const value = await valuation();
-        const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
-        const quote = async (amount: number, fixedBlock?: bigint) => {
-          const q = await simulateRoute(client, meta, route, amount, value, { extraCostsUsd: 0.05, safetyBps: 100, source, blockNumber: fixedBlock });
-          store.record('executable_quotes', key, { route, quote: q, netProfitUsd: netProfit(q), screen }, q);
-          return q;
-        };
-        const best = await optimizeRoute(route, (_r, amount) => quote(amount, blockNumber), { capitalUsd: config.paperCapitalUsd, maxTradeUsd: config.maxCandidateTradeUsd, steps: 8, minNetProfitUsd: config.minNetProfitUsd });
-        const trackedInput = best?.inputUsd ?? Math.min(1, config.paperCapitalUsd / 2, config.maxCandidateTradeUsd);
-        const samples = await trackLifecycle(() => quote(trackedInput), netProfit, sample => {
-          store.record('opportunity_lifecycle', key, sample, { timestampMs: sample.completedMs, blockNumber: sample.quote?.blockNumber ?? null, source });
+        const trackedInput = Math.min(1, config.paperCapitalUsd / 2, config.maxCandidateTradeUsd);
+        const { best, samples, timing } = await measureCandidate({
+          discoveredAtMs,
+          prepare: async () => {
+            const meta = await discovery.metadata(launch.token);
+            if (!meta) throw new Error('No RPC metadata');
+            store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
+            const value = await valuation();
+            return async (amount: number, fixedBlock?: bigint) => {
+              const q = await simulateRoute(client, meta, route, amount, value, { extraCostsUsd: 0.05, safetyBps: 100, source, blockNumber: fixedBlock });
+              store.record('executable_quotes', key, { discoveredAtMs, route, quote: q, netProfitUsd: netProfit(q), screen }, q);
+              return q;
+            };
+          },
+          quote: quote => quote(trackedInput),
+          size: async quote => {
+            const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
+            return optimizeRoute(route, (_r, amount) => quote(amount, blockNumber), { capitalUsd: config.paperCapitalUsd, maxTradeUsd: config.maxCandidateTradeUsd, steps: 8, minNetProfitUsd: config.minNetProfitUsd });
+          },
+          profit: netProfit,
+          recordSample: sample => store.record('opportunity_lifecycle', key, { ...sample, trackedInputUsd: trackedInput }, { timestampMs: sample.completedMs, blockNumber: sample.quote?.blockNumber ?? null, source }),
+          recordTiming: timing => store.record('opportunity_lifecycle', key, { measurementTiming: timing }, { timestampMs: monotonicClock.now(), blockNumber: null, source }),
         });
         const summary = summarizeLifecycle(samples);
-        store.record('opportunity_lifecycle', key, { best, summary }, { timestampMs: Date.now(), blockNumber: null, source });
+        store.record('opportunity_lifecycle', key, { best, summary, timing, trackedInputUsd: trackedInput }, { timestampMs: Date.now(), blockNumber: null, source });
         const initial = samples[0];
         if (initial.quote && initial.netProfitUsd !== null && initial.netProfitUsd >= config.minNetProfitUsd &&
           initial.quote.inputUsd + initial.quote.gasUsd + (initial.quote.extraCostsUsd ?? 0) <= config.paperCapitalUsd) opportunities++;
-        console.log(json({ paperOnly: true, key, best, summary }));
+        console.log(json({ paperOnly: true, key, best, summary, timing, trackedInputUsd: trackedInput }));
       } catch (error) {
         store.record('executable_quotes', key, { status: 'unavailable', reason: String(error), route }, { timestampMs: Date.now(), blockNumber: null, source });
         console.warn(json({ key, quoteUnavailable: String(error) }));

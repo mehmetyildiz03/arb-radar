@@ -16,15 +16,22 @@
 </head>
 <body>
   <main class="wrap">
-    <span class="badge">v0.1 · PAPER ONLY</span>
+    <span class="badge">v0.2 · PAPER ONLY · measurement fixes v0.2.1</span>
     <h1>Arb Radar</h1>
     <p>Research radar for cross-market price dislocations in Par multi-market launches on Robinhood Chain.</p>
     <section class="grid">
       <article class="card"><strong class="ok">20 routes</strong><span>for a five-market launch</span></article>
       <article class="card"><strong>~6.28%</strong><span>fee-only floor for two 3% legs</span></article>
-      <article class="card"><strong>$0 live risk</strong><span>no wallet, signer or execution path</span></article>
+      <article class="card"><strong>Read-only</strong><span>no private key, signer, transaction submission or mainnet execution</span></article>
     </section>
-    <div class="note"><strong>Research boundary</strong><br>Last-price spreads are screening signals, not executable-profit claims. v0.2 will add amount-sensitive v4 quoting, persistence and opportunity-lifecycle measurement.</div>
+    <div class="note"><strong>Research boundary</strong><br>All P&amp;L remains paper/theoretical. Last-price spreads are screening signals, not executable-profit claims. v0.2 includes amount-sensitive v4 router simulations, SQLite observations and opportunity-lifecycle measurement. Atomic execution and real capture are unproven.</div>
+    <h2>Measurement status</h2>
+    <p>The first quote is attempted before exhaustive sizing. Discovery-to-first-quote latency, sizing duration and post-sizing observations are reported separately. Lifecycle deadlines stay anchored to the original discovery time; missed deadlines are recorded. No subsecond capture capability has been demonstrated.</p>
+    <h2>Original LONG5 replay target</h2>
+    <p style="overflow-wrap:anywhere"><code>0x9bbd4d06ac29d8900b34998a56e96a33c16220f0</code></p>
+    <p>The original target is identified by address, regardless of its current symbol. Other LONG5 symbols are a comparison cohort only. Historical executable P&amp;L and half-life remain unknown without amount-sensitive historical state.</p>
+    <p><a style="color:#7ee787" href="LONG5_REPLAY.md">Replay report</a> · <a style="color:#7ee787" href="LONG5_REPLAY.json">Replay data</a></p>
+    <p>The sequencer feed reports already-ordered blocks, not a public mempool. This static page summarizes implementation status; it is not a live profit dashboard.</p>
   </main>
 </body>
 </html>

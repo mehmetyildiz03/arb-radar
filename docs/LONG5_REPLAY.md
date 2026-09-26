@@ -1,6 +1,20 @@
 # LONG5 paper replay
 
-Five most-traded exact LONG5 symbols among the first 100 search results; not exhaustive.
+## Original research target
+
+Address: **0x9bbd4d06ac29d8900b34998a56e96a33c16220f0**. Status: **partial-indexer-history**. Indexed symbol: Xl5.
+
+Latest at most 2000 trades; not a complete launch-era replay. Missing earlier state is not backfilled.
+
+Captured trades: 2000; indexed total: 14683; block observations: 922; fee-floor dislocations: 1490.
+
+Launch source: https://api.par.family/launches/0x9bbd4d06ac29d8900b34998a56e96a33c16220f0 (HTTP 200). Trade source: https://api.par.family/trades?token=0x9bbd4d06ac29d8900b34998a56e96a33c16220f0&limit=2000 (HTTP 200). Capture: 2026-09-26T21:19:26.989Z.
+
+Executable size, gross/net P&L, half-life and $100 capture feasibility remain null/unknown. Historical amount-sensitive state is not available in this fixture. An unavailable original target is reported explicitly and is never replaced by a matching symbol.
+
+## Comparison cohort
+
+Comparison cohort only: five most-traded exact LONG5 symbols among the first 100 search results; these do not substitute for the original target.
 
 | Token | Trades | Block observations | Fee-floor dislocations |
 |---|---:|---:|---:|
