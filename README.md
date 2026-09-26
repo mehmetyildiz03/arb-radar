@@ -1,4 +1,4 @@
-# Arb Radar v0.4
+# Arb Radar v0.5
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -28,10 +28,10 @@ npm run sequencer
 - Fee floor uses each leg's fee. For two 3% pools: `1 / (0.97 * 0.97) = 1.062812...`. Routing, impact and gas come later.
 - The simulation adapter makes `eth_call` and `eth_estimateGas` calls to Par's v4 router with exactly one buy market and one sell market, including their ETH conversion hops. Raw amounts stay bigint. Both legs use one block, checked again for reorgs. It does not approximate concentrated liquidity with constant-product math.
 - Repeated/shared pools and hooks are excluded: independent calls cannot reproduce their sequential state changes. Unsupported state overrides/reverts produce an unavailable quote, never a last-price fallback.
-- Coinbase ETH/USD is a public valuation input, with retrieval time and source saved; it is not an executable FX quote. Valuations older than 60 seconds are rejected.
+- Coinbase ETH/USD is a public valuation input, with retrieval time and source saved; it is not an executable FX quote. v0.5 creates the valuation lazily on the first real probe and shares that single promise across the entire tick, so concurrent candidates do not trigger duplicate valuation requests. Valuations older than 60 seconds are rejected.
 - Paper net = quoted output - input - gas - extra allowance - safety margin. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search is an eight-size grid, not a proof of a global optimum.
-- Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`), including queue and preparation delay. A small probe quote runs before exhaustive sizing. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start are recorded separately. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Calls are serialized; actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed. Zero-profit crossing and half-profit decay remain separate metrics; missing samples stay unknown.
-- SQLite records launches, market snapshots, screens, quotes/errors, lifecycle and RPC latency. Every row has timestamp/source/block columns; a null block explicitly means the source did not supply one. Bigints are decimal strings in JSON. No current head is falsely attached to indexer data.
+- Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`), including queue and preparation delay. v0.5 uses a staged scheduler: qualifying candidates are priority-ranked, all eligible first probes run under bounded `PROBE_CONCURRENCY`, and exhaustive sizing waits until the first-probe stage has settled. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start remain anchored to the original discovery clock. Candidates that exceed `CANDIDATE_MAX_QUEUE_MS` before entering the probe stage are recorded as stale drops and never receive a fake executable quote. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed.
+- SQLite records launches, market snapshots, screens, quotes/errors, lifecycle, RPC latency, sequencer observations and `radar_runtime` scheduler telemetry. Every row has timestamp/source/block columns; a null block explicitly means the source did not supply one. Bigints are decimal strings in JSON. No current head is falsely attached to indexer data.
 
 ## Configuration
 
@@ -46,6 +46,9 @@ npm run sequencer
 | MAX_CANDIDATE_TRADE_USD | 100 | Maximum input |
 | MIN_NET_PROFIT_USD | 0.05 | Sizing selection threshold |
 | RECENT_WINDOW_SECONDS | 60 | Maximum screening price age |
+| PROBE_CONCURRENCY | 2 | Maximum simultaneous first-probe phases, clamped 1–8 |
+| SIZING_CONCURRENCY | 1 | Maximum simultaneous sizing phases, clamped 1–4 |
+| CANDIDATE_MAX_QUEUE_MS | 2500 | Drop a queued candidate before probe if its discovery age exceeds this threshold |
 | FEED_SECONDS | 15 | Bounded sequencer experiment, max 300 |
 | DASHBOARD_HOST | 127.0.0.1 | Local dashboard bind address |
 | DASHBOARD_PORT | 4173 | Local dashboard port |
@@ -63,7 +66,7 @@ See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [hand
 
 ## Local dashboard
 
-The v0.4 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
+The v0.5 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
 
 - `/api/health`
 - `/api/snapshot?limit=120&windowSeconds=60`
@@ -80,3 +83,10 @@ It shows a true time-windowed funnel from fee-floor screens → quote-backed can
 - **Deadline miss rate**: lifecycle samples whose quote started after their original discovery-relative target. A completed quote is still not transaction inclusion or realized capture.
 
 The dashboard can pause browser refresh without stopping the radar process. Changing the analysis window triggers a fresh bounded snapshot.
+
+
+## v0.5 scheduler semantics
+
+The scheduler is a research-throughput layer, not an execution engine. Candidate priority is deterministic: higher fee-adjusted screening return first, then earlier discovery time, then stable key order. Probe and sizing concurrency are independently bounded. A sizing slot is never opened until the first-probe stage for the current queue has settled, preventing one candidate's eight-size optimizer from blocking every later candidate's first executable observation.
+
+The latest completed tick is written to `radar_runtime` with queue size, stale drops, probe/sizing starts and completions, observed peak concurrency, tick duration, configured queue age limit, and actual valuation fetch count. The local dashboard exposes these fields under **Candidate throughput**. This telemetry measures observation throughput only; it does not imply transaction inclusion speed.
