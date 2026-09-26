@@ -5,3 +5,4 @@ data/*.sqlite
 data/*.sqlite-*
 *.log
 .DS_Store
+.tmp/

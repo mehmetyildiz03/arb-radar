@@ -1,0 +1,1953 @@
+{
+  "paperOnly": true,
+  "cohort": "Five most-traded exact LONG5 symbols among the first 100 search results; not exhaustive.",
+  "reports": [
+    {
+      "source": "https://api.par.family/trades?token=0xc8ae1ae44c79af0a529a8acfffa425654771c812&limit=2000",
+      "capturedAt": "2026-09-26T20:53:22.355Z",
+      "token": "0xc8ae1ae44c79af0a529a8acfffa425654771c812",
+      "symbol": "LONG5",
+      "trades": 64,
+      "frames": [
+        {
+          "timestampMs": 1790404292000,
+          "blockNumber": 72871183,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790404701000,
+          "blockNumber": 72875204,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790407629000,
+          "blockNumber": 72904043,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 4.5880552966257815,
+              "feeAdjustedReturnPct": 0.44636830687938556
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790410328000,
+          "blockNumber": 72930642,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.7026538058406295,
+              "feeAdjustedReturnPct": 1.5168287151293258
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790410506000,
+          "blockNumber": 72932377,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790417507000,
+          "blockNumber": 73001594,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 3,
+              "spreadPct": 5.518850548748766,
+              "feeAdjustedReturnPct": 1.3403040670183053
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419642000,
+          "blockNumber": 73022720,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.7453863543758255,
+              "feeAdjustedReturnPct": 1.5578690547425333
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790421829000,
+          "blockNumber": 73044390,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 0,
+              "spreadPct": 4.9132813541204134,
+              "feeAdjustedReturnPct": 0.7587154124972351
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790423617000,
+          "blockNumber": 73062087,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 5.717587936734869,
+              "feeAdjustedReturnPct": 1.53117145444015
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790423836000,
+          "blockNumber": 73064263,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 4.574676287341406,
+              "feeAdjustedReturnPct": 0.43351910636266755
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790424822000,
+          "blockNumber": 73074038,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 5.014171245811672,
+              "feeAdjustedReturnPct": 0.8556100644775189
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790424994000,
+          "blockNumber": 73075743,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 6.426665863855607,
+              "feeAdjustedReturnPct": 2.2121698956469205
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790427521000,
+          "blockNumber": 73100831,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 5.929333024771988,
+              "feeAdjustedReturnPct": 1.7345314369910048
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790427522000,
+          "blockNumber": 73100835,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 4.854036673756745,
+              "feeAdjustedReturnPct": 0.7018168214759646
+            },
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 6.631959823483613,
+              "feeAdjustedReturnPct": 2.4093342144736463
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790427603000,
+          "blockNumber": 73101642,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 3,
+              "sell": 2,
+              "spreadPct": 4.360062827511957,
+              "feeAdjustedReturnPct": 0.22740433954246964
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790435543000,
+          "blockNumber": 73180634,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.2575997667450025,
+              "feeAdjustedReturnPct": 1.0893988159818901
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790435750000,
+          "blockNumber": 73182706,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.2501947499715484,
+              "feeAdjustedReturnPct": 1.0822870378726757
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790435894000,
+          "blockNumber": 73184139,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.7009675673850735,
+              "feeAdjustedReturnPct": 1.5152092517166205
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790436322000,
+          "blockNumber": 73188408,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 5.654570473409226,
+              "feeAdjustedReturnPct": 1.470649482662223
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790436492000,
+          "blockNumber": 73190121,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 7.62228413853796,
+              "feeAdjustedReturnPct": 3.3604416866518383
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790436563000,
+          "blockNumber": 73190820,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 3,
+              "spreadPct": 5.0186413793297024,
+              "feeAdjustedReturnPct": 0.8599031807082325
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790436906000,
+          "blockNumber": 73194251,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 0,
+              "spreadPct": 6.128720702757584,
+              "feeAdjustedReturnPct": 1.9260233629283752
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790438152000,
+          "blockNumber": 73206698,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 0,
+              "spreadPct": 4.202879036948359,
+              "feeAdjustedReturnPct": 0.07644502708519241
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790444694000,
+          "blockNumber": 73271797,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 4.571477742727503,
+              "feeAdjustedReturnPct": 0.4304472241154933
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790444713000,
+          "blockNumber": 73271981,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 4.875664480313646,
+              "feeAdjustedReturnPct": 0.7225881668932121
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790444750000,
+          "blockNumber": 73272341,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 5.066345978488607,
+              "feeAdjustedReturnPct": 0.9057186777404524
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790445051000,
+          "blockNumber": 73275345,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 6.476965957034686,
+              "feeAdjustedReturnPct": 2.260478105136099
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447219000,
+          "blockNumber": 73296868,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 5.965453329469339,
+              "feeAdjustedReturnPct": 1.769221377622343
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790448809000,
+          "blockNumber": 73312682,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 2,
+              "spreadPct": 4.782347970563938,
+              "feeAdjustedReturnPct": 0.6329669909296065
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        }
+      ],
+      "limitation": "Indexed transaction prices only; no historical amount-sensitive quotes or subsecond observations. Executability, P&L and capture remain unknown."
+    },
+    {
+      "source": "https://api.par.family/trades?token=0x4d3ac7a97cf59b79b466215438b8aed30be9aef7&limit=2000",
+      "capturedAt": "2026-09-26T20:53:22.432Z",
+      "token": "0x4d3ac7a97cf59b79b466215438b8aed30be9aef7",
+      "symbol": "LONG5",
+      "trades": 62,
+      "frames": [
+        {
+          "timestampMs": 1790447090000,
+          "blockNumber": 73295606,
+          "marketsObserved": 1,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447090000,
+          "blockNumber": 73295607,
+          "marketsObserved": 3,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 6.183774431327893,
+              "feeAdjustedReturnPct": 0.11441606860760345
+            },
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 7.084589452722589,
+              "feeAdjustedReturnPct": 0.9637414041944181
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447090000,
+          "blockNumber": 73295608,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 6.381566677864425,
+              "feeAdjustedReturnPct": 0.30090270812437314
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447094000,
+          "blockNumber": 73295648,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 6.180819721938868,
+              "feeAdjustedReturnPct": 0.11163024745255434
+            },
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 12.956819531594356,
+              "feeAdjustedReturnPct": 6.500320683987937
+            },
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 7.0816096769181325,
+              "feeAdjustedReturnPct": 0.9609319493951718
+            },
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 13.915093998178119,
+              "feeAdjustedReturnPct": 7.403821140336242
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 6.381566677861539,
+              "feeAdjustedReturnPct": 0.300902708121642
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447094000,
+          "blockNumber": 73295649,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 6.180819721938868,
+              "feeAdjustedReturnPct": 0.11163024745255434
+            },
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 6.596142581734066,
+              "feeAdjustedReturnPct": 0.5032136679047117
+            },
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 6.248264412499149,
+              "feeAdjustedReturnPct": 0.17521986694510883
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447100000,
+          "blockNumber": 73295700,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 7.293520505499762,
+              "feeAdjustedReturnPct": 1.160730166925883
+            },
+            {
+              "buy": 1,
+              "sell": 0,
+              "spreadPct": 7.529744410794925,
+              "feeAdjustedReturnPct": 1.383451750018283
+            },
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 15.372448368907744,
+              "feeAdjustedReturnPct": 8.777874592589342
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 9.012344464022881,
+              "feeAdjustedReturnPct": 2.781307866803795
+            },
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 7.154439844206029,
+              "feeAdjustedReturnPct": 1.0295992171510449
+            },
+            {
+              "buy": 3,
+              "sell": 4,
+              "spreadPct": 14.969770886796606,
+              "feeAdjustedReturnPct": 8.398213752678195
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447100000,
+          "blockNumber": 73295701,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 7.552383685075048,
+              "feeAdjustedReturnPct": 1.4047969860198295
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447102000,
+          "blockNumber": 73295727,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 38.38680182691081,
+              "feeAdjustedReturnPct": 30.476750621286406
+            },
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 46.203290491707286,
+              "feeAdjustedReturnPct": 37.84645661049177
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 40.60373486632294,
+              "feeAdjustedReturnPct": 32.56696598509878
+            },
+            {
+              "buy": 3,
+              "sell": 4,
+              "spreadPct": 43.343922089149586,
+              "feeAdjustedReturnPct": 35.150526846455875
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447102000,
+          "blockNumber": 73295728,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 1,
+              "spreadPct": 9.871450451780838,
+              "feeAdjustedReturnPct": 3.591308215407496
+            },
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 8.529470757165502,
+              "feeAdjustedReturnPct": 2.326034738156668
+            },
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 9.178888881920821,
+              "feeAdjustedReturnPct": 2.9383327723190966
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 7.845368196085323,
+              "feeAdjustedReturnPct": 1.6810347953652771
+            },
+            {
+              "buy": 3,
+              "sell": 1,
+              "spreadPct": 7.579373347352258,
+              "feeAdjustedReturnPct": 1.4302439461909344
+            },
+            {
+              "buy": 3,
+              "sell": 4,
+              "spreadPct": 6.265389286907497,
+              "feeAdjustedReturnPct": 0.19136590065713666
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447103000,
+          "blockNumber": 73295729,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 1,
+              "spreadPct": 8.666044572121233,
+              "feeAdjustedReturnPct": 2.4548021304233503
+            },
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 6.154118163103406,
+              "feeAdjustedReturnPct": 0.08645492301857516
+            },
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 9.178888881920821,
+              "feeAdjustedReturnPct": 2.9383327723190966
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 6.655107553819728,
+              "feeAdjustedReturnPct": 0.5588082611509337
+            },
+            {
+              "buy": 3,
+              "sell": 1,
+              "spreadPct": 7.579373347352258,
+              "feeAdjustedReturnPct": 1.4302439461909344
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447104000,
+          "blockNumber": 73295742,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 1,
+              "spreadPct": 7.3563657912954605,
+              "feeAdjustedReturnPct": 1.2199832790307896
+            },
+            {
+              "buy": 0,
+              "sell": 4,
+              "spreadPct": 6.154118163103406,
+              "feeAdjustedReturnPct": 0.08645492301857516
+            },
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 6.569415135051626,
+              "feeAdjustedReturnPct": 0.47801393534721015
+            },
+            {
+              "buy": 3,
+              "sell": 1,
+              "spreadPct": 6.282791484247374,
+              "feeAdjustedReturnPct": 0.20777340579927195
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447193000,
+          "blockNumber": 73296613,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447193000,
+          "blockNumber": 73296614,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 7.361859825133754,
+              "feeAdjustedReturnPct": 1.22516327938893
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447196000,
+          "blockNumber": 73296643,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 7.361859825133754,
+              "feeAdjustedReturnPct": 1.22516327938893
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447196000,
+          "blockNumber": 73296644,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 11.943854860074254,
+              "feeAdjustedReturnPct": 5.545256060127257
+            },
+            {
+              "buy": 2,
+              "sell": 3,
+              "spreadPct": 7.436204286765102,
+              "feeAdjustedReturnPct": 1.2952582859378836
+            },
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 7.361859825133754,
+              "feeAdjustedReturnPct": 1.22516327938893
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447196000,
+          "blockNumber": 73296645,
+          "marketsObserved": 5,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 7.563175397045563,
+              "feeAdjustedReturnPct": 1.4149718545258372
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447197000,
+          "blockNumber": 73296656,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447198000,
+          "blockNumber": 73296664,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447240000,
+          "blockNumber": 73297081,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447292000,
+          "blockNumber": 73297600,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447302000,
+          "blockNumber": 73297701,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790447306000,
+          "blockNumber": 73297738,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790454116000,
+          "blockNumber": 73365389,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        }
+      ],
+      "limitation": "Indexed transaction prices only; no historical amount-sensitive quotes or subsecond observations. Executability, P&L and capture remain unknown."
+    },
+    {
+      "source": "https://api.par.family/trades?token=0x21d98c6eb8918d2c20be37ca565201c03029ff6a&limit=2000",
+      "capturedAt": "2026-09-26T20:53:22.499Z",
+      "token": "0x21d98c6eb8918d2c20be37ca565201c03029ff6a",
+      "symbol": "LONG5",
+      "trades": 61,
+      "frames": [
+        {
+          "timestampMs": 1790418753000,
+          "blockNumber": 73013917,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418753000,
+          "blockNumber": 73013919,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 0,
+              "spreadPct": 71.97830894345006,
+              "feeAdjustedReturnPct": 62.48235463682852
+            },
+            {
+              "buy": 2,
+              "sell": 0,
+              "spreadPct": 71.78530155903952,
+              "feeAdjustedReturnPct": 62.30000434815559
+            },
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 71.91275540435531,
+              "feeAdjustedReturnPct": 62.42042070194842
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418753000,
+          "blockNumber": 73013920,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 0,
+              "spreadPct": 6.1627871641818155,
+              "feeAdjustedReturnPct": 0.30090270812435094
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418786000,
+          "blockNumber": 73014247,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 0,
+              "spreadPct": 23.2794933174185,
+              "feeAdjustedReturnPct": 16.472492814403907
+            },
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 20.432370384840137,
+              "feeAdjustedReturnPct": 13.782576621670795
+            },
+            {
+              "buy": 1,
+              "sell": 3,
+              "spreadPct": 8.282564222439358,
+              "feeAdjustedReturnPct": 2.3036341563331453
+            },
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 13.849809710981464,
+              "feeAdjustedReturnPct": 7.563478617979902
+            },
+            {
+              "buy": 3,
+              "sell": 2,
+              "spreadPct": 11.220464023591159,
+              "feeAdjustedReturnPct": 5.079314882064545
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418787000,
+          "blockNumber": 73014248,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 7.123740662384548,
+              "feeAdjustedReturnPct": 1.2087961979703188
+            },
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 5.869950733363605,
+              "feeAdjustedReturnPct": 0.0242355336701916
+            },
+            {
+              "buy": 3,
+              "sell": 2,
+              "spreadPct": 8.594203120229317,
+              "feeAdjustedReturnPct": 2.5980656007427383
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418798000,
+          "blockNumber": 73014359,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 6.239808410536729,
+              "feeAdjustedReturnPct": 0.3736711493405265
+            },
+            {
+              "buy": 3,
+              "sell": 2,
+              "spreadPct": 6.7441413333546585,
+              "feeAdjustedReturnPct": 0.8501568254921432
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418834000,
+          "blockNumber": 73014717,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418834000,
+          "blockNumber": 73014718,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 3,
+              "spreadPct": 6.445440512201017,
+              "feeAdjustedReturnPct": 0.5679490688793143
+            },
+            {
+              "buy": 2,
+              "sell": 3,
+              "spreadPct": 9.027120306022374,
+              "feeAdjustedReturnPct": 3.0070788312050345
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418834000,
+          "blockNumber": 73014720,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 3,
+              "spreadPct": 6.063819035466134,
+              "feeAdjustedReturnPct": 0.2073992036038419
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418840000,
+          "blockNumber": 73014780,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 6.176748970617307,
+              "feeAdjustedReturnPct": 0.31409359945568927
+            },
+            {
+              "buy": 3,
+              "sell": 1,
+              "spreadPct": 9.5509761183453,
+              "feeAdjustedReturnPct": 3.502009420994745
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418840000,
+          "blockNumber": 73014781,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 3,
+              "sell": 1,
+              "spreadPct": 5.990828311631935,
+              "feeAdjustedReturnPct": 0.13843873557686237
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418853000,
+          "blockNumber": 73014909,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 0,
+              "spreadPct": 10.727662506482606,
+              "feeAdjustedReturnPct": 4.613723893524657
+            },
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 9.59995733658956,
+              "feeAdjustedReturnPct": 3.5482860922924297
+            },
+            {
+              "buy": 1,
+              "sell": 3,
+              "spreadPct": 6.015030290077661,
+              "feeAdjustedReturnPct": 0.1613043775807288
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418853000,
+          "blockNumber": 73014910,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 0,
+              "spreadPct": 6.781743240692784,
+              "feeAdjustedReturnPct": 0.8856825059146756
+            },
+            {
+              "buy": 1,
+              "sell": 2,
+              "spreadPct": 7.642382606047526,
+              "feeAdjustedReturnPct": 1.6988008080720096
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418923000,
+          "blockNumber": 73015585,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419002000,
+          "blockNumber": 73016370,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419003000,
+          "blockNumber": 73016371,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 3,
+              "spreadPct": 9.349773825274843,
+              "feeAdjustedReturnPct": 3.311916713738472
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419003000,
+          "blockNumber": 73016372,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 6.162787164181838,
+              "feeAdjustedReturnPct": 0.30090270812437314
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419034000,
+          "blockNumber": 73016681,
+          "marketsObserved": 4,
+          "dislocations": [
+            {
+              "buy": 0,
+              "sell": 2,
+              "spreadPct": 5.941721326806948,
+              "feeAdjustedReturnPct": 0.09204324202596315
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790419284000,
+          "blockNumber": 73019167,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790423354000,
+          "blockNumber": 73059483,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790427197000,
+          "blockNumber": 73097617,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790433102000,
+          "blockNumber": 73156332,
+          "marketsObserved": 3,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790433115000,
+          "blockNumber": 73156460,
+          "marketsObserved": 2,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790433122000,
+          "blockNumber": 73156533,
+          "marketsObserved": 1,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790433132000,
+          "blockNumber": 73156629,
+          "marketsObserved": 1,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790437098000,
+          "blockNumber": 73196181,
+          "marketsObserved": 2,
+          "dislocations": [
+            {
+              "buy": 3,
+              "sell": 0,
+              "spreadPct": 7.128568471028585,
+              "feeAdjustedReturnPct": 1.2133574343322628
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790437295000,
+          "blockNumber": 73198145,
+          "marketsObserved": 2,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        }
+      ],
+      "limitation": "Indexed transaction prices only; no historical amount-sensitive quotes or subsecond observations. Executability, P&L and capture remain unknown."
+    },
+    {
+      "source": "https://api.par.family/trades?token=0xe3dfd5a068233b9461cd2d84396bb9d95fa73862&limit=2000",
+      "capturedAt": "2026-09-26T20:53:22.568Z",
+      "token": "0xe3dfd5a068233b9461cd2d84396bb9d95fa73862",
+      "symbol": "LONG5",
+      "trades": 52,
+      "frames": [
+        {
+          "timestampMs": 1790451394000,
+          "blockNumber": 73338355,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790451766000,
+          "blockNumber": 73342052,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452019000,
+          "blockNumber": 73344565,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452072000,
+          "blockNumber": 73345105,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452124000,
+          "blockNumber": 73345602,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452224000,
+          "blockNumber": 73346604,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452611000,
+          "blockNumber": 73350459,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452883000,
+          "blockNumber": 73353159,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790452917000,
+          "blockNumber": 73353492,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790453630000,
+          "blockNumber": 73360578,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790454041000,
+          "blockNumber": 73364644,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790454433000,
+          "blockNumber": 73368541,
+          "marketsObserved": 4,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        }
+      ],
+      "limitation": "Indexed transaction prices only; no historical amount-sensitive quotes or subsecond observations. Executability, P&L and capture remain unknown."
+    },
+    {
+      "source": "https://api.par.family/trades?token=0x483f8d260689d603fa9b51b8fdacd5b40141dea9&limit=2000",
+      "capturedAt": "2026-09-26T20:53:22.634Z",
+      "token": "0x483f8d260689d603fa9b51b8fdacd5b40141dea9",
+      "symbol": "LONG5",
+      "trades": 34,
+      "frames": [
+        {
+          "timestampMs": 1790411134000,
+          "blockNumber": 72938564,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790411611000,
+          "blockNumber": 72943267,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790411674000,
+          "blockNumber": 72943886,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790411799000,
+          "blockNumber": 72945130,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412068000,
+          "blockNumber": 72947777,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412158000,
+          "blockNumber": 72948672,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412555000,
+          "blockNumber": 72952602,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412588000,
+          "blockNumber": 72952925,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412620000,
+          "blockNumber": 72953239,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790412652000,
+          "blockNumber": 72953555,
+          "marketsObserved": 5,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790418761000,
+          "blockNumber": 73013997,
+          "marketsObserved": 2,
+          "dislocations": [],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790424814000,
+          "blockNumber": 73073950,
+          "marketsObserved": 2,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 9.236362437594803,
+              "feeAdjustedReturnPct": 2.7804934175329477
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790437295000,
+          "blockNumber": 73198144,
+          "marketsObserved": 2,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 7.232422634680824,
+              "feeAdjustedReturnPct": 0.8949864569711918
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790437991000,
+          "blockNumber": 73205095,
+          "marketsObserved": 2,
+          "dislocations": [
+            {
+              "buy": 4,
+              "sell": 1,
+              "spreadPct": 6.40920788982744,
+              "feeAdjustedReturnPct": 0.12042370353864129
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790445071000,
+          "blockNumber": 73275548,
+          "marketsObserved": 2,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 7.345555186410224,
+              "feeAdjustedReturnPct": 1.001432874893382
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790445072000,
+          "blockNumber": 73275553,
+          "marketsObserved": 3,
+          "dislocations": [
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 14.668438844247955,
+              "feeAdjustedReturnPct": 7.8915341085529
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 21.30363708796592,
+              "feeAdjustedReturnPct": 14.134592136067138
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        },
+        {
+          "timestampMs": 1790445072000,
+          "blockNumber": 73275555,
+          "marketsObserved": 3,
+          "dislocations": [
+            {
+              "buy": 1,
+              "sell": 4,
+              "spreadPct": 6.91180125576909,
+              "feeAdjustedReturnPct": 0.5933138015531414
+            },
+            {
+              "buy": 2,
+              "sell": 1,
+              "spreadPct": 12.219706125891516,
+              "feeAdjustedReturnPct": 5.587521493851333
+            },
+            {
+              "buy": 2,
+              "sell": 4,
+              "spreadPct": 19.97610918312127,
+              "feeAdjustedReturnPct": 12.885521130398804
+            }
+          ],
+          "bestExecutableSizeUsd": null,
+          "grossPnlUsd": null,
+          "netPnlUsd": null,
+          "halfLifeMs": null,
+          "captureWith100Usd": "unknown"
+        }
+      ],
+      "limitation": "Indexed transaction prices only; no historical amount-sensitive quotes or subsecond observations. Executability, P&L and capture remain unknown."
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 export type HexAddress = `0x${string}`;
 
 export interface MarketSnapshot {
+  poolFeeUnits?: number;
+  priceAtMs?: number;
+  stale?: boolean;
   index: number;
   pairToken: HexAddress | "0x0000000000000000000000000000000000000000";
   quoteSymbol: string;
@@ -42,6 +45,7 @@ export interface ExecutionQuote {
   outputUsd: number;
   gasUsd: number;
   extraCostsUsd?: number;
+  safetyMarginUsd?: number;
 }
 
 export interface OptimizedOpportunity {

@@ -1,0 +1,54 @@
+{
+  "paperOnly": true,
+  "at": "2026-09-26T21:00:25.238Z",
+  "durationMs": 2775,
+  "route": {
+    "token": "0xc8ae1ae44c79af0a529a8acfffa425654771c812",
+    "buy": {
+      "stale": false,
+      "priceAtMs": 1790447219000,
+      "index": 0,
+      "pairToken": "0xd9db30bb0d2b8d2eae3826a1372117e058791e18",
+      "quoteSymbol": "MOO",
+      "poolId": "0x08a66b26ce62f1a8025bc0cdad471f581dfdfd7cef931f89a45493d7914ca8e7",
+      "tokenPriceEth": 1.307981809590068e-9
+    },
+    "sell": {
+      "stale": false,
+      "priceAtMs": 1790436492000,
+      "index": 1,
+      "pairToken": "0x385f4f8ae47651ce5f58f5265395a669f8281e18",
+      "quoteSymbol": "MEME",
+      "poolId": "0x19720735caf3f62284f7cdc37764acb685b18183b46e9c5603149e1dc83daa03",
+      "tokenPriceEth": 1.4068219449570462e-9
+    },
+    "poolFeeUnits": 20000
+  },
+  "quote": {
+    "kind": "rpc-simulation",
+    "timestampMs": 1790456425238,
+    "blockNumber": "73388285",
+    "blockHash": "0x05a0fdafe111db52186bf2d3306fbd2986ab0a7e8bf8eaa847a483c6f1420456",
+    "source": "public Robinhood RPC",
+    "inputUsd": 1,
+    "outputUsd": 0.04187663342508661,
+    "inputWei": "373710930857872",
+    "tokenOut": "276739442363555410910484",
+    "outputWei": "15649755658483",
+    "gasUnits": "3149996",
+    "gasPriceWei": "26966000",
+    "gasUsd": 0.2272954444789976,
+    "extraCostsUsd": 0.05,
+    "safetyMarginUsd": 0.00041876633425086613,
+    "valuation": {
+      "usdPerEth": 2675.865,
+      "timestampMs": 1790456423835,
+      "source": "coinbase:ETH-USD/spot"
+    },
+    "assumptions": [
+      "Disjoint pools; independently simulated legs at one block",
+      "Gas estimate +20%; explicit extra allowance for L1/routing/failure costs",
+      "Paper estimate; atomic executor and inclusion unvalidated"
+    ]
+  }
+}

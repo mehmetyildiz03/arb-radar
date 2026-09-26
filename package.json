@@ -1,6 +1,6 @@
 {
   "name": "arb-radar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Paper-only multi-pool arbitrage radar for Par on Robinhood Chain",
@@ -9,12 +9,22 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.mjs",
     "check": "npm run typecheck && npm test",
-    "start": "npm run build && node dist/index.js"
+    "start": "npm run build && node dist/index.js",
+    "watch": "npm run build && node dist/index.js --watch",
+    "replay": "npm run build && node scripts/replay.mjs",
+    "sequencer": "npm run build && node dist/research/sequencerExperiment.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13.0"
   },
   "devDependencies": {
+    "@types/node": "26.6.3",
+    "@types/ws": "8.18.1",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "par-sdk": "git+https://github.com/pardotfamily/par-sdk.git#f5a5beb9f9efc17eaca0e2edf85648fa02bb2beb",
+    "viem": "2.56.9",
+    "ws": "8.22.0"
   }
 }
