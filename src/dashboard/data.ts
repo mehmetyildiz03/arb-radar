@@ -183,7 +183,7 @@ function routeFields(payload: Record<string, unknown>): {
   };
 }
 
-function summarizeOpportunities(rows: ObservationRow[], limit: number): {
+function summarizeOpportunities(rows: ObservationRow[]): {
   opportunities: OpportunitySummary[];
   paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
   latestPositiveOpportunity: OpportunitySummary | null;
@@ -249,8 +249,7 @@ function summarizeOpportunities(rows: ObservationRow[], limit: number): {
       if (_hasNumeric) item.status = (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
       return item;
     })
-    .sort((a,b)=>b.timestampMs-a.timestampMs)
-    .slice(0, clampLimit(limit));
+    .sort((a,b)=>b.timestampMs-a.timestampMs);
 
   let latestPositiveOpportunity: OpportunitySummary | null = null;
   if (latestPositiveRow) {
@@ -349,13 +348,13 @@ export function buildDashboardSnapshot(
       if (typeof route?.token === 'string') tokens.add(route.token.toLowerCase());
     }
 
-    const { opportunities, paperPnl, latestPositiveOpportunity } = summarizeOpportunities(quoteRows,limit);
-    for (const item of opportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
+    const { opportunities: allOpportunities, paperPnl, latestPositiveOpportunity } = summarizeOpportunities(quoteRows);
+    for (const item of allOpportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
 
-    const quoteBackedCandidates = opportunities.filter(x=>x.quoteCount > 0).length;
-    const positiveExecutableQuotes = opportunities.filter(x=>x.status === 'positive' && x.quoteCount > 0).length;
-    const nonpositiveExecutableQuotes = opportunities.filter(x=>x.status === 'nonpositive' && x.quoteCount > 0).length;
-    const unavailableQuotes = opportunities.filter(x=>x.status === 'unavailable').length;
+    const quoteBackedCandidates = allOpportunities.filter(x=>x.quoteCount > 0).length;
+    const positiveExecutableQuotes = allOpportunities.filter(x=>x.status === 'positive' && x.quoteCount > 0).length;
+    const nonpositiveExecutableQuotes = allOpportunities.filter(x=>x.status === 'nonpositive' && x.quoteCount > 0).length;
+    const unavailableQuotes = allOpportunities.filter(x=>x.status === 'unavailable').length;
 
     const timings: Array<Record<string,unknown>> = [];
     const firstQuoteDurations: number[] = [];
@@ -447,7 +446,7 @@ export function buildDashboardSnapshot(
         p95DeadlineMissMs:percentile(deadlineMisses,0.95),
         latestPositiveOpportunity,
       },
-      opportunities,
+      opportunities:allOpportunities.slice(0,clampLimit(limit)),
       timings:timings.sort((a,b)=>(b.timestampMs as number)-(a.timestampMs as number)).slice(0,clampLimit(limit)),
       rpcLatency:rpcLatency.slice(0,clampLimit(limit)),
       paperPnl,
