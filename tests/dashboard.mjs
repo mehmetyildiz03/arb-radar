@@ -33,6 +33,8 @@ test('dashboard uses the time window for quality metrics and keeps display limit
 
     store.record('route_screens','old-route',{route:{token:'0xold'},screen:{passesFeeFloor:true,grossSpreadPct:99}},{timestampMs:at-61_000,blockNumber:null,source:'fixture'});
     store.record('route_screens','route',{route:{token:'0xtoken'},screen:{passesFeeFloor:true,grossSpreadPct:8.5}},{timestampMs:at+1,blockNumber:null,source:'fixture'});
+    store.record('route_screens','route-2',{route:{token:'0xtoken'},screen:{passesFeeFloor:true,grossSpreadPct:7.4}},{timestampMs:at+2,blockNumber:null,source:'fixture'});
+    store.record('route_screens','route-3',{route:{token:'0xtoken'},screen:{passesFeeFloor:true,grossSpreadPct:6.2}},{timestampMs:at+3,blockNumber:null,source:'fixture'});
 
     store.record('executable_quotes','old-positive',{
       route:{token:'0xold',buy:{quoteSymbol:'X'},sell:{quoteSymbol:'Y'}},
@@ -61,6 +63,16 @@ test('dashboard uses the time window for quality metrics and keeps display limit
       netProfitUsd:-.07
     },{timestampMs:at+5,blockNumber:125n,source:'fixture'});
 
+    // Quote is written inside the selected window, but the candidate was discovered before it.
+    // The legacy key fallback must keep it out of the current funnel.
+    const lateOldKey=`0xold:0:1:${at-61_000}`;
+    store.record('executable_quotes',lateOldKey,{
+      route:{token:'0xold',buy:{quoteSymbol:'X'},sell:{quoteSymbol:'Y'}},
+      screen:{grossSpreadPct:80},
+      quote:{inputUsd:1,outputUsd:5,gasUsd:0,blockNumber:'126'},
+      netProfitUsd:4
+    },{timestampMs:at+9,blockNumber:126n,source:'fixture'});
+
     store.record('opportunity_lifecycle','opp-1',{measurementTiming:{
       queueDelayMs:5,preparationDurationMs:10,
       discoveryToFirstQuoteStartedMs:20,discoveryToFirstQuoteCompletedMs:45,firstQuoteDurationMs:25,
@@ -69,6 +81,10 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     }},{timestampMs:at+6,blockNumber:null,source:'fixture'});
     store.record('opportunity_lifecycle','opp-1',{targetMs:0,deadlineMissedByMs:0,netProfitUsd:.75},{timestampMs:at+7,blockNumber:123n,source:'fixture'});
     store.record('opportunity_lifecycle','opp-1',{targetMs:100,deadlineMissedByMs:120,netProfitUsd:.2},{timestampMs:at+8,blockNumber:125n,source:'fixture'});
+    store.record('opportunity_lifecycle','0xold:0:1:old-timing',{
+      measurementTiming:{discoveredAtMs:at-61_000,queueDelayMs:99999,preparationDurationMs:99999,
+        discoveryToFirstQuoteCompletedMs:99999,firstQuoteDurationMs:99999,sizingDurationMs:99999}
+    },{timestampMs:at+9,blockNumber:null,source:'fixture'});
 
     for (const [i,d] of [10,20,30,40,100].entries()) {
       store.record('rpc_latency_samples','eth_call',{durationMs:d,status:'200'},{timestampMs:at+10+i,blockNumber:null,source:'fixture'});
@@ -85,7 +101,7 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     const snapshot=buildDashboardSnapshot(dbPath,1,now,60_000);
     assert.equal(snapshot.database.exists,true);
     assert.equal(snapshot.database.freshness,'live');
-    assert.equal(snapshot.radar.qualifyingScreens,1);
+    assert.equal(snapshot.radar.qualifyingScreens,3);
     assert.equal(snapshot.radar.quoteBackedCandidates,2);
     assert.equal(snapshot.radar.positiveExecutableQuotes,1);
     assert.equal(snapshot.radar.nonpositiveExecutableQuotes,1);
@@ -135,6 +151,9 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.pnlTraces.firstProbe.find(x=>x.key==='opp-1').netProfitUsd,.75);
     assert.equal(snapshot.pnlTraces.bestObserved.find(x=>x.key==='opp-1').netProfitUsd,.75);
     assert.equal(snapshot.paperPnl.some(x=>x.key==='old-positive'),false);
+    assert.equal(snapshot.opportunities.some(x=>x.key===lateOldKey),false);
+    assert.equal(snapshot.pnlTraces.firstProbe.some(x=>x.key===lateOldKey),false);
+    assert.ok(snapshot.radar.quoteBackedCandidates <= snapshot.radar.qualifyingScreens);
 
     const reopened=new ResearchStore(dbPath);
     const after=reopened.db.prepare('SELECT COUNT(*) AS c FROM executable_quotes').get().c;
