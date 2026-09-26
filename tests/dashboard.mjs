@@ -69,6 +69,10 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     for (const [i,d] of [10,20,30,40,100].entries()) {
       store.record('rpc_latency_samples','eth_call',{durationMs:d,status:'200'},{timestampMs:at+10+i,blockNumber:null,source:'fixture'});
     }
+    store.record('radar_runtime','tick:fixture',{
+      durationMs:320,valuationFetches:1,probeConcurrency:2,sizingConcurrency:1,candidateMaxQueueMs:2500,
+      scheduler:{queued:5,droppedStale:1,probesStarted:4,probesCompleted:4,sizingStarted:3,sizingCompleted:3,maxActiveProbes:2,maxActiveSizing:1}
+    },{timestampMs:at+30,blockNumber:null,source:'arb-radar:scheduler'});
     store.db.prepare("INSERT INTO executable_quotes(timestamp_ms,block_number,source,observation_key,payload) VALUES (?,?,?,?,?)")
       .run(at+20,null,'fixture','bad','{not-json');
     const before=store.db.prepare('SELECT COUNT(*) AS c FROM executable_quotes').get().c;
@@ -95,6 +99,14 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.radar.p95DeadlineMissMs,120);
     assert.equal(snapshot.radar.latestPositiveOpportunity.key,'opp-1');
     assert.equal(snapshot.radar.latestPositiveOpportunity.latestNetProfitUsd,.75);
+    assert.equal(snapshot.runtime.queued,5);
+    assert.equal(snapshot.runtime.droppedStale,1);
+    assert.equal(snapshot.runtime.probesCompleted,4);
+    assert.equal(snapshot.runtime.sizingCompleted,3);
+    assert.equal(snapshot.runtime.probeConcurrency,2);
+    assert.equal(snapshot.runtime.sizingConcurrency,1);
+    assert.equal(snapshot.runtime.tickDurationMs,320);
+    assert.equal(snapshot.runtime.valuationFetches,1);
 
     assert.equal(snapshot.opportunities.length,1);
     assert.equal(snapshot.opportunities[0].key,'opp-1');
