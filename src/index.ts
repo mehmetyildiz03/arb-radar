@@ -11,6 +11,7 @@ import { monotonicClock, summarizeLifecycle } from './research/lifecycle.js';
 import { measureCandidate } from './research/measurement.js';
 import {
   runStagedCandidates,
+  sharedAsyncResource,
   StaleCandidateError,
   type StageSchedulerMetrics,
 } from './research/scheduler.js';
@@ -93,7 +94,11 @@ async function tick(): Promise<void> {
     maxActiveProbes: 0,
     maxActiveSizing: 0,
   };
-  const valuationPromise = candidates.length ? valuation() : null;
+  let valuationFetches = 0;
+  const getValuation = sharedAsyncResource(async () => {
+    valuationFetches++;
+    return valuation();
+  });
 
   const results = await runStagedCandidates(
     candidates.map(candidate => ({
@@ -122,7 +127,7 @@ async function tick(): Promise<void> {
         prepare: async () => {
           const [meta, value] = await Promise.all([
             discovery.metadata(launch.token),
-            valuationPromise!,
+            getValuation(),
           ]);
           if (!meta) throw new Error('No RPC metadata');
           store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
@@ -187,7 +192,7 @@ async function tick(): Promise<void> {
     candidates: candidates.length,
     opportunities,
     unavailable,
-    valuationFetches: candidates.length ? 1 : 0,
+    valuationFetches,
     probeConcurrency: config.probeConcurrency,
     sizingConcurrency: config.sizingConcurrency,
     candidateMaxQueueMs: config.candidateMaxQueueMs,
