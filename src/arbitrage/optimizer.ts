@@ -38,16 +38,23 @@ async function mapBounded<T, R>(
   const limit = Math.min(8, Math.max(1, Math.floor(Number.isFinite(concurrency) ? concurrency : 1)));
   const results = new Array<R>(items.length);
   let next = 0;
+  let failure: unknown = null;
 
   async function runner(): Promise<void> {
-    while (true) {
+    while (failure === null) {
       const index = next++;
       if (index >= items.length) return;
-      results[index] = await worker(items[index]!, index);
+      try {
+        results[index] = await worker(items[index]!, index);
+      } catch (error) {
+        if (failure === null) failure = error;
+        return;
+      }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runner()));
+  if (failure !== null) throw failure;
   return results;
 }
 
