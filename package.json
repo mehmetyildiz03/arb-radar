@@ -1,0 +1,20 @@
+{
+  "name": "arb-radar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Paper-only multi-pool arbitrage radar for Par on Robinhood Chain",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/*.mjs",
+    "check": "npm run typecheck && npm test",
+    "start": "npm run build && node dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}
