@@ -1,4 +1,4 @@
-# Arb Radar v0.6.1
+# Arb Radar v0.7
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -29,7 +29,7 @@ npm run sequencer
 - The simulation adapter makes `eth_call` and `eth_estimateGas` calls to Par's v4 router with exactly one buy market and one sell market, including their ETH conversion hops. Raw amounts stay bigint. Both legs use one block, checked again for reorgs. It does not approximate concentrated liquidity with constant-product math.
 - Repeated/shared pools and hooks are excluded: independent calls cannot reproduce their sequential state changes. Unsupported state overrides/reverts produce an unavailable quote, never a last-price fallback.
 - Coinbase ETH/USD is a public valuation input, with retrieval time and source saved; it is not an executable FX quote. v0.5 creates the valuation lazily on the first real probe and shares that single promise across the entire tick, so concurrent candidates do not trigger duplicate valuation requests. Valuations older than 60 seconds are rejected.
-- Paper net = quoted output - input - gas - extra allowance - safety margin. v0.6 persists this decomposition for every numeric quote. The router output already includes pool fees, routing and price impact; those embedded effects are **not** independently observable here and are not fabricated as separate fee/slippage numbers. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search is an eight-size grid, not a proof of a global optimum.
+- Paper net = quoted output - input - gas - extra allowance - safety margin. v0.6 persists this decomposition for every numeric quote. The router output already includes pool fees, routing and price impact; those embedded effects are **not** independently observable here and are not fabricated as separate fee/slippage numbers. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search remains the same eight-size grid and is still not a proof of a global optimum. v0.7 does **not** reduce the grid or add early-stop heuristics; independent grid quotes at the same fixed block are evaluated with bounded `SIZING_QUOTE_CONCURRENCY`, preserving the same candidate set while reducing wall-clock time.
 - Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`). v0.6 profiles queue delay, preparation, first-quote call duration, sizing-barrier wait, sizing-slot wait and sizing execution separately while preserving the original discovery-relative clock. v0.5 uses a staged scheduler: qualifying candidates are priority-ranked, all eligible first probes run under bounded `PROBE_CONCURRENCY`, and exhaustive sizing waits until the first-probe stage has settled. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start remain anchored to the original discovery clock. Candidates that exceed `CANDIDATE_MAX_QUEUE_MS` before entering the probe stage are recorded as stale drops and never receive a fake executable quote. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed.
 - SQLite records launches, market snapshots, screens, quotes/errors, lifecycle, RPC latency, sequencer observations and `radar_runtime` scheduler telemetry. Every row has timestamp/source/block columns; a null block explicitly means the source did not supply one. Bigints are decimal strings in JSON. No current head is falsely attached to indexer data.
 
@@ -47,7 +47,8 @@ npm run sequencer
 | MIN_NET_PROFIT_USD | 0.05 | Sizing selection threshold |
 | RECENT_WINDOW_SECONDS | 60 | Maximum screening price age |
 | PROBE_CONCURRENCY | 2 | Maximum simultaneous first-probe phases, clamped 1–8 |
-| SIZING_CONCURRENCY | 1 | Maximum simultaneous sizing phases, clamped 1–4 |
+| SIZING_CONCURRENCY | 1 | Maximum simultaneous candidate sizing phases, clamped 1–4 |
+| SIZING_QUOTE_CONCURRENCY | 2 | Maximum simultaneous fixed-block amount quotes inside one sizing grid, clamped 1–4 |
 | CANDIDATE_MAX_QUEUE_MS | 2500 | Drop a queued candidate before probe if its discovery age exceeds this threshold |
 | FEED_SECONDS | 15 | Bounded sequencer experiment, max 300 |
 | DASHBOARD_HOST | 127.0.0.1 | Local dashboard bind address |
@@ -66,7 +67,7 @@ See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [hand
 
 ## Local dashboard
 
-The v0.6 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
+The v0.7 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
 
 - `/api/health`
 - `/api/snapshot?limit=120&windowSeconds=60`
@@ -110,3 +111,12 @@ The pipeline profiler aggregates median/p95 for queue delay, preparation, first 
 ## v0.6.1 dashboard window semantics
 
 Dashboard analysis windows are candidate-discovery windows. A quote or lifecycle row written later does not pull an older candidate into the current 60s/5m/15m funnel. New rows persist `discoveredAtMs`; legacy standard candidate keys fall back to their timestamp suffix. This keeps fee-floor screens, quote-backed candidates, P&L traces and lifecycle profiler summaries on the same discovery-time basis.
+
+
+## v0.7 read-only parallelism
+
+v0.7 targets wall-clock latency without changing search coverage. The optimizer still evaluates the same deterministic eight input sizes at one fixed block, but up to `SIZING_QUOTE_CONCURRENCY` independent quote simulations can be in flight at once. Results are placed back in original size order before the best candidate is selected, so completion order cannot change the result.
+
+Inside one executable quote, buy and sell simulations remain sequential because the sell amount depends on the buy output. After the sell simulation is known, the buy gas estimate, sell gas estimate and gas-price read are independent read-only calls and run concurrently. Canonical block confirmation remains after those reads. Any rejected sizing quote still fails the sizing operation closed; v0.7 does not silently skip RPC failures.
+
+This increases RPC concurrency, so the default is intentionally conservative at 2 sizing quotes per candidate. The dashboard exposes the configured sizing quote concurrency next to candidate throughput so latency improvements can be compared against RPC error/rate-limit behavior.
