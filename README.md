@@ -1,4 +1,4 @@
-# Arb Radar v0.3
+# Arb Radar v0.4
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -63,9 +63,20 @@ See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [hand
 
 ## Local dashboard
 
-The v0.3 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
+The v0.4 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
 
 - `/api/health`
-- `/api/snapshot?limit=120`
+- `/api/snapshot?limit=120&windowSeconds=60`
 
-It shows recent qualifying fee-floor screens, amount-sensitive paper quotes, discovery-to-first-quote timing, sizing duration, RPC latency, and total dataset counts. A missing database renders an empty waiting state instead of creating research rows. The HTTP server binds to localhost by default.
+It shows a true time-windowed funnel from fee-floor screens → quote-backed candidates → positive paper candidates, groups repeated optimizer/requote rows by candidate key, and keeps screen spread visually separate from quote-backed paper P&L. The dashboard adds positive/nonpositive/unavailable filters, token/route search, sorting, a latest-positive summary, paper P&L trace, discovery-to-first-quote median/p95, sizing median/p95, missed lifecycle deadline rate/p95, RPC latency, and lifetime dataset counts. Windows are bounded to 10 seconds–15 minutes and the analysis scan is capped at 5,000 rows per table with a visible truncation warning. A missing database renders an empty waiting state instead of creating research rows. The HTTP server binds to localhost by default.
+
+
+### v0.4 metric semantics
+
+- **Fee-floor screens**: qualifying last-price screens inside the selected time window. This is not executable profit.
+- **Quote-backed candidate**: a unique candidate key with at least one amount-sensitive numeric RPC simulation inside the selected time window.
+- **Positive paper candidate**: a quote-backed candidate with at least one positive net paper quote in the selected time window. Its latest quote may already be nonpositive; the table shows both latest net and best observed net.
+- **Latest positive quote**: the most recent individual quote row with positive net paper P&L in the selected window.
+- **Deadline miss rate**: lifecycle samples whose quote started after their original discovery-relative target. A completed quote is still not transaction inclusion or realized capture.
+
+The dashboard can pause browser refresh without stopping the radar process. Changing the analysis window triggers a fresh bounded snapshot.
