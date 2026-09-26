@@ -90,17 +90,23 @@ export async function simulateRoute(client: PublicClient, launch: TradableLaunch
   const sellResult = await client.simulateContract({ ...common, functionName: 'sellToEth', args: sellArgs, stateOverride: sellState });
   const sellSimulationMs = elapsed(started, clockNow());
 
-  started = clockNow();
-  const buyGas = await client.estimateContractGas({ ...common, functionName: 'buyWithEth', args: buyArgs, value: inputWei, stateOverride: buyState });
-  const buyGasEstimateMs = elapsed(started, clockNow());
+  const timed = async <T>(work: () => Promise<T>): Promise<{ value: T; durationMs: number }> => {
+    const callStarted = clockNow();
+    const value = await work();
+    return { value, durationMs: elapsed(callStarted, clockNow()) };
+  };
 
-  started = clockNow();
-  const sellGas = await client.estimateContractGas({ ...common, functionName: 'sellToEth', args: sellArgs, stateOverride: sellState });
-  const sellGasEstimateMs = elapsed(started, clockNow());
-
-  started = clockNow();
-  const gasPriceWei = await client.getGasPrice();
-  const gasPriceMs = elapsed(started, clockNow());
+  const [buyGasResult, sellGasResult, gasPriceResult] = await Promise.all([
+    timed(() => client.estimateContractGas({ ...common, functionName: 'buyWithEth', args: buyArgs, value: inputWei, stateOverride: buyState })),
+    timed(() => client.estimateContractGas({ ...common, functionName: 'sellToEth', args: sellArgs, stateOverride: sellState })),
+    timed(() => client.getGasPrice()),
+  ]);
+  const buyGas = buyGasResult.value;
+  const sellGas = sellGasResult.value;
+  const gasPriceWei = gasPriceResult.value;
+  const buyGasEstimateMs = buyGasResult.durationMs;
+  const sellGasEstimateMs = sellGasResult.durationMs;
+  const gasPriceMs = gasPriceResult.durationMs;
 
   started = clockNow();
   const confirm = await client.getBlock({ blockNumber: block.number });
