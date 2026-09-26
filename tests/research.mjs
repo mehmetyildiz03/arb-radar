@@ -378,3 +378,26 @@ test('parallel sizing remains fail-closed when any quote rejects', async () => {
     return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
   },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:4}),/rpc failure/);
 });
+
+
+test('simulation overlaps independent gas estimates and gas-price read', async () => {
+  let active=0,maxActive=0;
+  const overlap=async value=>{
+    active++;maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    return value;
+  };
+  const client={
+    getBlock:async()=>({number:50n,hash:'0xabc'}),
+    simulateContract:async args=>({result:args.functionName==='buyWithEth'?123n:parseEther('0.04')}),
+    estimateContractGas:async()=>overlap(100000n),
+    getGasPrice:async()=>overlap(1000000000n),
+  };
+  const q=await simulateRoute(client,tradable(),route,100,
+    {usdPerEth:3000,timestampMs:Date.now(),source:'fixture'},
+    {extraCostsUsd:.05,safetyBps:100,source:'fixture'});
+  assert.equal(maxActive,3);
+  assert.equal(q.gasUnits,240000n);
+  assert.equal(q.outputUsd,120);
+});
