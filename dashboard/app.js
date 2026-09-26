@@ -232,8 +232,8 @@ function render(data){
   setText('quoteBackedCount',nf.format(data.radar.quoteBackedCandidates));
   setText('positiveCount',nf.format(data.radar.positiveExecutableQuotes));
   setText('positiveRate','oran '+fmtPct(data.radar.positiveRatePct));
-  setText('quoteLatencyMetric',(data.radar.medianFirstQuoteMs??'—')+' / '+(data.radar.p95FirstQuoteMs??'—'));
-  setText('rpcMetric',(data.radar.medianRpcLatencyMs??'—')+' / '+(data.radar.p95RpcLatencyMs??'—'));
+  setText('quoteLatencyMetric',fmtMs(data.radar.medianFirstQuoteMs)+' / '+fmtMs(data.radar.p95FirstQuoteMs));
+  setText('rpcMetric',fmtMs(data.radar.medianRpcLatencyMs)+' / '+fmtMs(data.radar.p95RpcLatencyMs));
   setText('timingCount',data.timings.length+' aday');
   setText('firstMedian',fmtMs(data.radar.medianFirstQuoteMs));
   setText('firstP95',fmtMs(data.radar.p95FirstQuoteMs));
