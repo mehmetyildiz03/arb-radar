@@ -1,4 +1,4 @@
-# Arb Radar v0.5
+# Arb Radar v0.6
 
 Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
 
@@ -29,8 +29,8 @@ npm run sequencer
 - The simulation adapter makes `eth_call` and `eth_estimateGas` calls to Par's v4 router with exactly one buy market and one sell market, including their ETH conversion hops. Raw amounts stay bigint. Both legs use one block, checked again for reorgs. It does not approximate concentrated liquidity with constant-product math.
 - Repeated/shared pools and hooks are excluded: independent calls cannot reproduce their sequential state changes. Unsupported state overrides/reverts produce an unavailable quote, never a last-price fallback.
 - Coinbase ETH/USD is a public valuation input, with retrieval time and source saved; it is not an executable FX quote. v0.5 creates the valuation lazily on the first real probe and shares that single promise across the entire tick, so concurrent candidates do not trigger duplicate valuation requests. Valuations older than 60 seconds are rejected.
-- Paper net = quoted output - input - gas - extra allowance - safety margin. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search is an eight-size grid, not a proof of a global optimum.
-- Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`), including queue and preparation delay. v0.5 uses a staged scheduler: qualifying candidates are priority-ranked, all eligible first probes run under bounded `PROBE_CONCURRENCY`, and exhaustive sizing waits until the first-probe stage has settled. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start remain anchored to the original discovery clock. Candidates that exceed `CANDIDATE_MAX_QUEUE_MS` before entering the probe stage are recorded as stale drops and never receive a fake executable quote. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed.
+- Paper net = quoted output - input - gas - extra allowance - safety margin. v0.6 persists this decomposition for every numeric quote. The router output already includes pool fees, routing and price impact; those embedded effects are **not** independently observable here and are not fabricated as separate fee/slippage numbers. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search is an eight-size grid, not a proof of a global optimum.
+- Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`). v0.6 profiles queue delay, preparation, first-quote call duration, sizing-barrier wait, sizing-slot wait and sizing execution separately while preserving the original discovery-relative clock. v0.5 uses a staged scheduler: qualifying candidates are priority-ranked, all eligible first probes run under bounded `PROBE_CONCURRENCY`, and exhaustive sizing waits until the first-probe stage has settled. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start remain anchored to the original discovery clock. Candidates that exceed `CANDIDATE_MAX_QUEUE_MS` before entering the probe stage are recorded as stale drops and never receive a fake executable quote. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed.
 - SQLite records launches, market snapshots, screens, quotes/errors, lifecycle, RPC latency, sequencer observations and `radar_runtime` scheduler telemetry. Every row has timestamp/source/block columns; a null block explicitly means the source did not supply one. Bigints are decimal strings in JSON. No current head is falsely attached to indexer data.
 
 ## Configuration
@@ -66,7 +66,7 @@ See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [hand
 
 ## Local dashboard
 
-The v0.5 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
+The v0.6 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
 
 - `/api/health`
 - `/api/snapshot?limit=120&windowSeconds=60`
@@ -90,3 +90,18 @@ The dashboard can pause browser refresh without stopping the radar process. Chan
 The scheduler is a research-throughput layer, not an execution engine. Candidate priority is deterministic: higher fee-adjusted screening return first, then earlier discovery time, then stable key order. Probe and sizing concurrency are independently bounded. A sizing slot is never opened until the first-probe stage for the current queue has settled, preventing one candidate's eight-size optimizer from blocking every later candidate's first executable observation.
 
 The latest completed tick is written to `radar_runtime` with queue size, stale drops, probe/sizing starts and completions, observed peak concurrency, tick duration, configured queue age limit, and actual valuation fetch count. The local dashboard exposes these fields under **Candidate throughput**. This telemetry measures observation throughput only; it does not imply transaction inclusion speed.
+
+
+## v0.6 cost and latency semantics
+
+For every numeric executable quote, the dashboard can show:
+
+`gross quoted edge = router output - input`
+
+`paper net = gross quoted edge - gas - extra allowance - safety margin`
+
+A negative result is classified by the first explicit stage that erases a previously positive quoted edge. If router output is already below input, the route is labeled negative before explicit research costs. Pool fees, routing and price impact remain embedded in router output and are not presented as separately measured values.
+
+The P&L chart now separates **first probe** from **best observed candidate** values so optimizer/lifecycle requotes do not appear as a single stream of realized gains or losses.
+
+The pipeline profiler aggregates median/p95 for queue delay, preparation, first quote, sizing barrier, sizing queue and sizing execution. First-probe simulation profiles additionally time block read, buy simulation, sell simulation, buy/sell gas estimation, gas-price read and block confirmation. These are local observation timings only; they do not measure transaction inclusion.
