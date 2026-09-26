@@ -41,8 +41,10 @@ const server = createServer(async (request,response)=>{
     if (url.pathname === '/api/snapshot') {
       const requested=Number(url.searchParams.get('limit') ?? 100);
       const limit=Number.isFinite(requested) ? Math.min(500,Math.max(1,Math.floor(requested))) : 100;
+      const requestedWindowSeconds=Number(url.searchParams.get('windowSeconds') ?? 60);
+      const windowSeconds=Number.isFinite(requestedWindowSeconds) ? Math.min(900,Math.max(10,Math.floor(requestedWindowSeconds))) : 60;
       try {
-        sendJson(response,200,buildDashboardSnapshot(databasePath,limit));
+        sendJson(response,200,buildDashboardSnapshot(databasePath,limit,Date.now(),windowSeconds*1000));
       } catch (error) {
         sendJson(response,503,{paperOnly:true,error:'snapshot-unavailable',detail:String(error),at:Date.now()});
       }
