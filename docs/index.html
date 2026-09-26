@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Arb Radar</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#0b0d10;color:#eef2f7}
+    body{margin:0}.wrap{max-width:920px;margin:auto;padding:56px 24px}
+    .badge{display:inline-block;padding:6px 10px;border:1px solid #313944;border-radius:999px;color:#aab6c4;font-size:13px}
+    h1{font-size:clamp(42px,8vw,78px);line-height:.95;margin:22px 0}
+    p{color:#aab6c4;line-height:1.65;font-size:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:34px}
+    .card{border:1px solid #242b34;border-radius:18px;padding:20px;background:#11151a}.card strong{display:block;font-size:26px;margin-bottom:7px}.ok{color:#7ee787}
+    code{color:#d2a8ff}.note{margin-top:34px;padding:18px 20px;border-left:3px solid #d29922;background:#14120c}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="badge">v0.1 · PAPER ONLY</span>
+    <h1>Arb Radar</h1>
+    <p>Research radar for cross-market price dislocations in Par multi-market launches on Robinhood Chain.</p>
+    <section class="grid">
+      <article class="card"><strong class="ok">20 routes</strong><span>for a five-market launch</span></article>
+      <article class="card"><strong>~6.28%</strong><span>fee-only floor for two 3% legs</span></article>
+      <article class="card"><strong>$0 live risk</strong><span>no wallet, signer or execution path</span></article>
+    </section>
+    <div class="note"><strong>Research boundary</strong><br>Last-price spreads are screening signals, not executable-profit claims. v0.2 will add amount-sensitive v4 quoting, persistence and opportunity-lifecycle measurement.</div>
+  </main>
+</body>
+</html>
