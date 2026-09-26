@@ -529,6 +529,7 @@ export function buildDashboardSnapshot(
     const timings: Array<Record<string,unknown>> = [];
     const queueDelays: number[] = [];
     const preparationDurations: number[] = [];
+    const discoveryToFirstQuoteDurations: number[] = [];
     const firstQuoteDurations: number[] = [];
     const sizingBarrierWaits: number[] = [];
     const sizingQueueWaits: number[] = [];
@@ -553,6 +554,7 @@ export function buildDashboardSnapshot(
         const sizingQueueWait=num(timing.sizingQueueWaitMs);
         if (queueDelay !== null) queueDelays.push(queueDelay);
         if (preparation !== null) preparationDurations.push(preparation);
+        if (firstQuote !== null) discoveryToFirstQuoteDurations.push(firstQuote);
         if (firstQuoteDuration !== null) firstQuoteDurations.push(firstQuoteDuration);
         if (sizingBarrierWait !== null) sizingBarrierWaits.push(sizingBarrierWait);
         if (sizingQueueWait !== null) sizingQueueWaits.push(sizingQueueWait);
@@ -603,10 +605,8 @@ export function buildDashboardSnapshot(
     const simulationValues: Record<string,number[]> = {
       blockRead:[],buySimulation:[],sellSimulation:[],buyGasEstimate:[],sellGasEstimate:[],gasPrice:[],blockConfirm:[],total:[]
     };
-    for (const row of quoteRows) {
-      const payload=parsePayload(row.payload);
-      const quote=payload?.quote as Record<string,unknown> | undefined;
-      const profile=quoteProfile(quote);
+    for (const opportunity of allOpportunities) {
+      const profile=opportunity.firstProbeProfile;
       if (!profile) continue;
       for (const [targetKey,sourceKey] of [
         ['blockRead','blockReadMs'],['buySimulation','buySimulationMs'],['sellSimulation','sellSimulationMs'],
@@ -654,8 +654,8 @@ export function buildDashboardSnapshot(
         uniqueTokens:tokens.size,
         medianRpcLatencyMs:percentile(durations,0.5),
         p95RpcLatencyMs:percentile(durations,0.95),
-        medianFirstQuoteMs:percentile(firstQuoteDurations,0.5),
-        p95FirstQuoteMs:percentile(firstQuoteDurations,0.95),
+        medianFirstQuoteMs:percentile(discoveryToFirstQuoteDurations,0.5),
+        p95FirstQuoteMs:percentile(discoveryToFirstQuoteDurations,0.95),
         medianSizingMs:percentile(sizingDurations,0.5),
         p95SizingMs:percentile(sizingDurations,0.95),
         lifecycleDeadlineSamples,
