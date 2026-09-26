@@ -372,11 +372,15 @@ test('parallel sizing never exceeds configured quote concurrency', async () => {
   assert.equal(maxActive,3);
 });
 
-test('parallel sizing remains fail-closed when any quote rejects', async () => {
+test('parallel sizing remains fail-closed and stops scheduling after first rejection', async () => {
+  let started=0;
   await assert.rejects(()=>optimizeRoute(route,async(_route,inputUsd)=>{
-    if(inputUsd>10&&inputUsd<90)throw Error('rpc failure');
+    started++;
+    if(inputUsd===1)throw Error('rpc failure');
+    await new Promise(resolve=>setTimeout(resolve,5));
     return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
-  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:4}),/rpc failure/);
+  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:2}),/rpc failure/);
+  assert.ok(started<=2);
 });
 
 
