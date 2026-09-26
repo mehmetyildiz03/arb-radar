@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const tables = ['launches', 'market_snapshots', 'route_screens', 'executable_quotes', 'opportunity_lifecycle', 'rpc_latency_samples', 'sequencer_observations'] as const;
+export const tables = ['launches', 'market_snapshots', 'route_screens', 'executable_quotes', 'opportunity_lifecycle', 'rpc_latency_samples', 'sequencer_observations', 'radar_runtime'] as const;
 export type ObservationTable = typeof tables[number];
 export interface Provenance { timestampMs: number; blockNumber: bigint | number | null; source: string }
 export const json = (value: unknown): string => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v);
@@ -17,7 +17,7 @@ export class ResearchStore {
       id INTEGER PRIMARY KEY, timestamp_ms INTEGER NOT NULL, block_number TEXT,
       source TEXT NOT NULL, observation_key TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS ${table}_lookup ON ${table}(observation_key, timestamp_ms);`);
-    this.db.exec('PRAGMA user_version=2');
+    this.db.exec('PRAGMA user_version=3');
   }
   record(table: ObservationTable, key: string, data: unknown, provenance: Provenance): void {
     if (!tables.includes(table) || !Number.isFinite(provenance.timestampMs) || !provenance.source) throw new Error('Invalid observation');
