@@ -129,6 +129,24 @@
       </article>
     </section>
 
+    <section class="panel runtime-panel">
+      <div class="panel-head">
+        <div><span class="kicker">SCHEDULER</span><h2>Candidate throughput</h2></div>
+        <span class="mini" id="runtimeTick">tick bekleniyor</span>
+      </div>
+      <div class="runtime-grid">
+        <div><span>Kuyruğa alınan</span><strong id="runtimeQueued">0</strong></div>
+        <div><span>Stale düşen</span><strong id="runtimeDropped">0</strong></div>
+        <div><span>Probe tamamlanan</span><strong id="runtimeProbes">0 / 0</strong></div>
+        <div><span>Sizing tamamlanan</span><strong id="runtimeSizing">0 / 0</strong></div>
+        <div><span>Probe concurrency</span><strong id="runtimeProbeConcurrency">—</strong></div>
+        <div><span>Sizing concurrency</span><strong id="runtimeSizingConcurrency">—</strong></div>
+        <div><span>Tick süresi</span><strong id="runtimeDuration">—</strong></div>
+        <div><span>Valuation fetch</span><strong id="runtimeValuation">0</strong></div>
+      </div>
+      <p class="footnote">First-probe aşaması sizing'den önce tamamlanır. Stale adaylar pahalı quote/sizing işine başlamadan düşürülür; bu panel son tamamlanan radar tick'ini gösterir.</p>
+    </section>
+
     <section class="panel dataset-panel">
       <div class="panel-head">
         <div><span class="kicker">DATASET</span><h2>Toplanan gözlemler</h2></div>
