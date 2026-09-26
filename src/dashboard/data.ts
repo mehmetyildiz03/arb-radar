@@ -352,7 +352,7 @@ export function buildDashboardSnapshot(
     const lifecycle = rowsSince(db,'opportunity_lifecycle',fromMs);
     const rpc = rowsSince(db,'rpc_latency_samples',fromMs);
     const runtimeRows = rowsSince(db,'radar_runtime',fromMs,20);
-    let runtime = emptyBase.runtime;
+    let runtime: DashboardSnapshot['runtime'] = emptyBase.runtime;
     for (const row of runtimeRows) {
       const payload=parsePayload(row.payload);
       const scheduler=payload?.scheduler as Record<string,unknown> | undefined;
