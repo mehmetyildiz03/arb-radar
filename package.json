@@ -14,7 +14,8 @@
     "replay": "npm run build && node scripts/replay.mjs",
     "sequencer": "npm run build && node dist/research/sequencerExperiment.js",
     "dev": "npm run build && node scripts/dev.mjs",
-    "dashboard": "npm run build && node dist/dashboard/server.js"
+    "dashboard": "npm run build && node dist/dashboard/server.js",
+    "dashboard:smoke": "npm run build && node scripts/dashboard-smoke.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
