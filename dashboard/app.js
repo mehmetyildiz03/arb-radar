@@ -1,21 +1,18 @@
 const $=id=>document.getElementById(id);
 const nf=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
 const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:4});
-const state={data:null,filter:'all',sort:'newest',query:'',windowSeconds:60,paused:false};
+const state={data:null,filter:'all',sort:'newest',query:'',windowSeconds:60,paused:false,selectedKey:null};
 const ago=ms=>{if(!ms)return 'henüz gözlem yok';const s=Math.max(0,Math.round((Date.now()-ms)/1000));if(s<60)return s+' sn önce';if(s<3600)return Math.floor(s/60)+' dk önce';return Math.floor(s/3600)+' sa önce'};
 const short=v=>typeof v==='string'&&v.length>18?v.slice(0,8)+'…'+v.slice(-6):String(v??'—');
 const fmtMs=v=>typeof v==='number'?nf.format(v)+' ms':'—';
 const fmtPct=v=>typeof v==='number'?nf.format(v)+'%':'—';
 const fmtMoney=v=>typeof v==='number'?money.format(v):'—';
 const clear=node=>{while(node.firstChild)node.removeChild(node.firstChild)};
-function setText(id,value){$(id).textContent=String(value)}
+function setText(id,value){const el=$(id);if(el)el.textContent=String(value)}
 function cell(text,cls='',title=''){const td=document.createElement('td');td.textContent=String(text??'—');if(cls)td.className=cls;if(title)td.title=title;return td}
 function freshnessLabel(value){return ({live:'CANLI',delayed:'GECİKMELİ',stale:'BAYAT',idle:'HAZIR',empty:'BOŞ'})[value]??'—'}
-function statusClass(item){
-  if(item.status==='positive')return 'pos';
-  if(item.status==='unavailable')return 'muted';
-  return 'neg';
-}
+function statusClass(item){if(item.status==='positive')return 'pos';if(item.status==='unavailable')return 'muted';return 'neg'}
+function moneyClass(value){return typeof value==='number'?(value>0?'pos':value<0?'neg':''):'muted'}
 function filteredOpportunities(){
   const items=[...(state.data?.opportunities??[])];
   const q=state.query.trim().toLowerCase();
@@ -31,6 +28,11 @@ function filteredOpportunities(){
   });
   return filtered;
 }
+function ensureSelection(){
+  const all=state.data?.opportunities??[];
+  if(state.selectedKey&&all.some(x=>x.key===state.selectedKey))return;
+  state.selectedKey=all[0]?.key??null;
+}
 function renderOpportunities(){
   const items=filteredOpportunities();
   const body=$('opportunities');clear(body);
@@ -38,18 +40,65 @@ function renderOpportunities(){
   setText('oppShown',items.length+' aday');
   for(const item of items.slice(0,100)){
     const tr=document.createElement('tr');
+    tr.classList.toggle('selected-row',item.key===state.selectedKey);
+    tr.tabIndex=0;
+    tr.title='Maliyet ayrıntısını görmek için seç';
+    const choose=()=>{state.selectedKey=item.key;renderOpportunities();renderSelectedCandidate()};
+    tr.addEventListener('click',choose);
+    tr.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose()}});
     const dt=new Date(item.timestampMs);
     tr.append(cell(dt.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),'muted'));
     tr.append(cell(short(item.token),'token',String(item.token??'')));
     tr.append(cell((item.buyMarket??'?')+' → '+(item.sellMarket??'?'),'route'));
     tr.append(cell(fmtPct(item.grossSpreadPct)));
+    tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),moneyClass(item.firstProbeNetProfitUsd)));
     const latest=item.latestNetProfitUsd;
-    tr.append(cell(latest===null&&item.status==='unavailable'?'unavailable':fmtMoney(latest),latest>0?'pos':latest===null?'muted':'neg',item.reason??''));
+    tr.append(cell(latest===null&&item.status==='unavailable'?'unavailable':fmtMoney(latest),moneyClass(latest),item.reason??''));
     tr.append(cell(fmtMoney(item.bestObservedNetProfitUsd),statusClass(item)));
     tr.append(cell(item.quoteCount??0,'muted'));
     tr.append(cell(short(item.blockNumber),'muted',String(item.blockNumber??'')));
     body.append(tr);
   }
+}
+const reasonLabels={
+  'positive-after-explicit-costs':'Explicit maliyetlerden sonra pozitif.',
+  'quoted-route-negative-before-explicit-costs':'Router output, gas ve araştırma tamponları eklenmeden önce bile input değerinin altında.',
+  'gas-erased-quoted-edge':'Pozitif quoted edge vardı ancak gas maliyeti edge’i tamamen sildi.',
+  'extra-cost-erased-remaining-edge':'Gas sonrası kalan edge, extra allowance ile negatife döndü.',
+  'safety-margin-erased-remaining-edge':'Edge explicit maliyetleri karşılıyordu fakat safety margin sonrası negatife döndü.',
+  'negative-after-explicit-costs':'Explicit araştırma maliyetleri sonrası net sonuç negatif.'
+};
+function setNetClass(id,value){
+  const el=$(id);if(!el)return;
+  el.classList.remove('pos','neg','muted');
+  el.classList.add(typeof value==='number'?(value>0?'pos':value<0?'neg':'muted'):'muted');
+}
+function renderBreakdown(prefix,breakdown){
+  const map={
+    Input:'inputUsd',Output:'outputUsd',Gross:'grossQuotedEdgeUsd',Gas:'gasUsd',
+    Extra:'extraCostsUsd',Safety:'safetyMarginUsd',Net:'netProfitUsd',Net2:'netProfitUsd'
+  };
+  for(const [suffix,key] of Object.entries(map)){
+    const value=breakdown?.[key];
+    setText(prefix+suffix,fmtMoney(value));
+    if(suffix==='Net'||suffix==='Net2'||suffix==='Gross')setNetClass(prefix+suffix,value);
+  }
+  setText(prefix+'Reason',breakdown?reasonLabels[breakdown.reason]??String(breakdown.reason):'Bu candidate için sayısal executable quote yok.');
+}
+function renderSelectedCandidate(){
+  ensureSelection();
+  const item=(state.data?.opportunities??[]).find(x=>x.key===state.selectedKey);
+  if(!item){
+    setText('selectedCandidateTitle','Aday seçilmedi');
+    setText('selectedCandidateMeta','Tablodan bir candidate seç.');
+    setText('selectedCandidateStatus','—');
+    renderBreakdown('probe',null);renderBreakdown('best',null);return;
+  }
+  setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
+  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' screening spread · '+(item.quoteCount??0)+' numeric quote · '+ago(item.timestampMs));
+  setText('selectedCandidateStatus',item.status==='positive'?'POZİTİF PAPER':item.status==='unavailable'?'UNAVAILABLE':'NEGATİF PAPER');
+  renderBreakdown('probe',item.firstProbeCostBreakdown);
+  renderBreakdown('best',item.bestObservedCostBreakdown);
 }
 function renderTimings(items){
   const root=$('timings');clear(root);$('timingEmpty').style.display=items.length?'none':'block';
@@ -57,7 +106,7 @@ function renderTimings(items){
   for(const item of items.slice(0,12)){
     const row=document.createElement('div');row.className='timing';
     const key=document.createElement('div');key.className='key';key.textContent=short(item.key);key.title=String(item.key??'');row.append(key);
-    for(const [label,value] of [['ilk quote',item.discoveryToFirstQuoteCompletedMs],['sizing',item.sizingDurationMs],['post-sizing',item.discoveryToPostSizingLifecycleMs]]){
+    for(const [label,value] of [['queue',item.queueDelayMs],['prepare',item.preparationDurationMs],['ilk quote',item.firstQuoteDurationMs]]){
       const el=document.createElement('div');el.className='value';const small=document.createElement('span');small.textContent=label;el.append(small);el.append(document.createTextNode(fmtMs(value)));row.append(el);
     }
     root.append(row);
@@ -80,11 +129,6 @@ function renderSeriesChart(rootId,points,options={}){
   if(min===max){min-=1;max+=1}
   const range=max-min;
   const svg=svgEl('svg',{viewBox:`0 0 ${w} ${h}`});
-  const defs=svgEl('defs');
-  const grad=svgEl('linearGradient',{id:options.gradientId??'chartGradient',x1:'0',x2:'0',y1:'0',y2:'1'});
-  grad.append(svgEl('stop',{offset:'0%','stop-color':options.color??'#75d9a5'}));
-  grad.append(svgEl('stop',{offset:'100%','stop-color':options.fade??'#75d9a500'}));
-  defs.append(grad);svg.append(defs);
   for(let i=0;i<4;i++){
     const y=pad+(h-pad*2)*(i/3);svg.append(svgEl('line',{class:'gridline',x1:pad,x2:w-pad,y1:y,y2:y}));
   }
@@ -98,17 +142,77 @@ function renderSeriesChart(rootId,points,options={}){
     return [x,y];
   });
   const d=coords.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area=svgEl('path',{class:'area',d:d+` L ${coords.at(-1)[0]} ${h-pad} L ${coords[0][0]} ${h-pad} Z`,fill:`url(#${options.gradientId??'chartGradient'})`});
-  const line=svgEl('path',{class:options.lineClass??'line',d});
-  svg.append(area);svg.append(line);root.append(svg);
+  svg.append(svgEl('path',{class:options.lineClass??'line',d}));
+  root.append(svg);
+}
+function renderDualPnlChart(traces){
+  const root=$('pnlChart');clear(root);
+  const first=traces?.firstProbe??[],best=traces?.bestObserved??[];
+  const values=[...first,...best].map(x=>x.netProfitUsd).filter(Number.isFinite);
+  if(values.length<2){
+    const d=document.createElement('div');d.className='empty';d.style.display='block';d.textContent='Candidate P&L serisi için veri bekleniyor.';root.append(d);return;
+  }
+  const w=600,h=210,pad=14,min=Math.min(0,...values),max=Math.max(0,...values);
+  const range=(max-min)||1;
+  const svg=svgEl('svg',{viewBox:`0 0 ${w} ${h}`});
+  for(let i=0;i<4;i++){const y=pad+(h-pad*2)*(i/3);svg.append(svgEl('line',{class:'gridline',x1:pad,x2:w-pad,y1:y,y2:y}))}
+  if(min<0&&max>0){const y=h-pad-(h-pad*2)*((0-min)/range);svg.append(svgEl('line',{class:'zeroline',x1:pad,x2:w-pad,y1:y,y2:y}))}
+  const draw=(series,cls)=>{
+    if(!series.length)return;
+    const coords=series.map((point,i)=>{
+      const x=series.length===1?w/2:pad+(w-pad*2)*(i/(series.length-1));
+      const y=h-pad-(h-pad*2)*((point.netProfitUsd-min)/range);
+      return [x,y];
+    });
+    if(coords.length===1){svg.append(svgEl('circle',{class:cls,cx:coords[0][0],cy:coords[0][1],r:3}));return}
+    const d=coords.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    svg.append(svgEl('path',{class:cls,d}));
+  };
+  draw(first,'probe-pnl-line');draw(best,'best-pnl-line');root.append(svg);
+}
+const phaseLabels={
+  queueDelay:'queue',preparation:'preparation',firstQuote:'first quote',
+  sizingBarrierWait:'sizing barrier',sizingQueueWait:'sizing queue',sizingExecution:'sizing execution'
+};
+const simLabels={
+  blockRead:'block read',buySimulation:'buy simulation',sellSimulation:'sell simulation',
+  buyGasEstimate:'buy gas estimate',sellGasEstimate:'sell gas estimate',gasPrice:'gas price',blockConfirm:'block confirm'
+};
+function renderPipeline(pipeline){
+  const phases=pipeline?.phases??{};
+  const bind=(key,medianId,p95Id)=>{setText(medianId,fmtMs(phases[key]?.medianMs));setText(p95Id,fmtMs(phases[key]?.p95Ms))};
+  bind('queueDelay','phaseQueueMedian','phaseQueueP95');
+  bind('preparation','phasePreparationMedian','phasePreparationP95');
+  bind('firstQuote','phaseQuoteMedian','phaseQuoteP95');
+  bind('sizingBarrierWait','phaseBarrierMedian','phaseBarrierP95');
+  bind('sizingQueueWait','phaseSizingQueueMedian','phaseSizingQueueP95');
+  bind('sizingExecution','phaseSizingMedian','phaseSizingP95');
+  const dominant=pipeline?.dominantPhase;
+  setText('dominantPhase',dominant?'dominant: '+(phaseLabels[dominant.key]??dominant.key)+' · '+fmtMs(dominant.medianMs):'dominant —');
+
+  const simulation=pipeline?.simulation??{};
+  const dominantSim=pipeline?.dominantSimulationStep;
+  setText('dominantSimulation',dominantSim?'dominant: '+(simLabels[dominantSim.key]??dominantSim.key)+' · '+fmtMs(dominantSim.medianMs):'dominant —');
+  const root=$('simulationBars');clear(root);
+  const entries=Object.entries(simLabels).map(([key,label])=>({key,label,median:simulation[key]?.medianMs,p95:simulation[key]?.p95Ms})).filter(x=>typeof x.median==='number');
+  const max=Math.max(1,...entries.map(x=>x.median));
+  if(!entries.length){
+    const empty=document.createElement('div');empty.className='empty';empty.style.display='block';empty.textContent='Yeni profilli quote örneği bekleniyor.';root.append(empty);return;
+  }
+  for(const item of entries){
+    const row=document.createElement('div');row.className='sim-row';
+    const label=document.createElement('span');label.textContent=item.label;
+    const track=document.createElement('div');track.className='sim-track';
+    const bar=document.createElement('div');bar.className='sim-bar';bar.style.width=Math.max(2,(item.median/max)*100)+'%';track.append(bar);
+    const value=document.createElement('strong');value.textContent=fmtMs(item.median)+' / '+fmtMs(item.p95);
+    row.append(label,track,value);root.append(row);
+  }
 }
 function renderSpotlight(item){
   if(!item){
     setText('spotlightRoute','Pozitif paper quote bekleniyor');
     setText('spotlightMeta','Amount-sensitive quote oluştuğunda burada özetlenecek.');
-    setText('spotlightNet','—');
-    $('spotlight').classList.remove('has-positive');
-    return;
+    setText('spotlightNet','—');$('spotlight').classList.remove('has-positive');return;
   }
   $('spotlight').classList.add('has-positive');
   setText('spotlightRoute',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
@@ -116,7 +220,7 @@ function renderSpotlight(item){
   setText('spotlightNet',fmtMoney(item.latestNetProfitUsd));
 }
 function render(data){
-  state.data=data;
+  state.data=data;ensureSelection();
   const freshness=data.database.freshness;
   $('pulse').classList.toggle('live',freshness==='live');
   $('pulse').classList.toggle('delayed',freshness==='delayed');
@@ -139,36 +243,32 @@ function render(data){
   setText('missP95',fmtMs(data.radar.p95DeadlineMissMs));
   setText('rpcCount',data.rpcLatency.length+' örnek');
   setText('rpcLatest',data.rpcLatency[0]?data.rpcLatency[0].method+' · '+nf.format(data.rpcLatency[0].durationMs)+' ms':'—');
-  setText('pnlCount',data.paperPnl.length+' quote');
-  const latestPnl=data.paperPnl.at(-1);
-  setText('pnlLatest',latestPnl?fmtMoney(latestPnl.netProfitUsd):'—');
-  setText('countLaunches',nf.format(data.counts.launches));
-  setText('countMarkets',nf.format(data.counts.marketSnapshots));
-  setText('countScreens',nf.format(data.counts.routeScreens));
-  setText('countQuotes',nf.format(data.counts.executableQuotes));
-  setText('countLifecycle',nf.format(data.counts.lifecycleRows));
-  setText('countRpc',nf.format(data.counts.rpcSamples));
-  setText('uniqueTokens',nf.format(data.radar.uniqueTokens));
-  setText('unavailableCount',nf.format(data.radar.unavailableQuotes));
+
+  const traces=data.pnlTraces??{firstProbe:[],bestObserved:[]};
+  setText('pnlCount',traces.firstProbe.length+' aday');
+  const firstLatest=traces.firstProbe.at(-1),bestLatest=traces.bestObserved.at(-1);
+  setText('pnlLatest',firstLatest?'probe '+fmtMoney(firstLatest.netProfitUsd)+' · best '+fmtMoney(bestLatest?.netProfitUsd):'—');
+
+  setText('countLaunches',nf.format(data.counts.launches));setText('countMarkets',nf.format(data.counts.marketSnapshots));
+  setText('countScreens',nf.format(data.counts.routeScreens));setText('countQuotes',nf.format(data.counts.executableQuotes));
+  setText('countLifecycle',nf.format(data.counts.lifecycleRows));setText('countRpc',nf.format(data.counts.rpcSamples));
+  setText('uniqueTokens',nf.format(data.radar.uniqueTokens));setText('unavailableCount',nf.format(data.radar.unavailableQuotes));
   setText('analysisCap','analysis cap '+nf.format(data.window.analysisRowCap)+' / tablo');
+
   const runtime=data.runtime??{};
   setText('runtimeTick',runtime.lastTickAtMs?'son tick '+ago(runtime.lastTickAtMs):'tick bekleniyor');
-  setText('runtimeQueued',nf.format(runtime.queued??0));
-  setText('runtimeDropped',nf.format(runtime.droppedStale??0));
+  setText('runtimeQueued',nf.format(runtime.queued??0));setText('runtimeDropped',nf.format(runtime.droppedStale??0));
   setText('runtimeProbes',nf.format(runtime.probesCompleted??0)+' / '+nf.format(runtime.probesStarted??0));
   setText('runtimeSizing',nf.format(runtime.sizingCompleted??0)+' / '+nf.format(runtime.sizingStarted??0));
-  setText('runtimeProbeConcurrency',runtime.probeConcurrency??'—');
-  setText('runtimeSizingConcurrency',runtime.sizingConcurrency??'—');
-  setText('runtimeDuration',fmtMs(runtime.tickDurationMs));
-  setText('runtimeValuation',nf.format(runtime.valuationFetches??0));
+  setText('runtimeProbeConcurrency',runtime.probeConcurrency??'—');setText('runtimeSizingConcurrency',runtime.sizingConcurrency??'—');
+  setText('runtimeDuration',fmtMs(runtime.tickDurationMs));setText('runtimeValuation',nf.format(runtime.valuationFetches??0));
 
   const truncated=Object.values(data.window.truncated).some(Boolean);
-  setText('qualityNote',truncated?'Analiz satır sınırına ulaştı; bu pencerenin bazı oranları kısmi olabilir. Quote tamamlanması capture/inclusion değildir.':'Quote tamamlanması capture/inclusion değildir.');
+  setText('qualityNote',truncated?'Analiz satır sınırına ulaştı; bazı oranlar kısmi olabilir. Quote tamamlanması capture/inclusion değildir.':'Quote tamamlanması capture/inclusion değildir.');
   renderSpotlight(data.radar.latestPositiveOpportunity);
-  renderOpportunities();
-  renderTimings(data.timings);
-  renderSeriesChart('rpcChart',data.rpcLatency.slice(0,100).reverse().map(x=>({value:x.durationMs})),{gradientId:'rpcGradient',empty:'RPC örneği bekleniyor.'});
-  renderSeriesChart('pnlChart',data.paperPnl.map(x=>({value:x.netProfitUsd})),{gradientId:'pnlGradient',lineClass:'pnl-line',color:'#d6b36a',fade:'#d6b36a00',includeZero:true,empty:'Paper P&L quote örneği bekleniyor.'});
+  renderOpportunities();renderSelectedCandidate();renderPipeline(data.pipeline);renderTimings(data.timings);
+  renderSeriesChart('rpcChart',data.rpcLatency.slice(0,100).reverse().map(x=>({value:x.durationMs})),{empty:'RPC örneği bekleniyor.'});
+  renderDualPnlChart(traces);
 }
 async function refresh(){
   if(state.paused)return;
@@ -196,5 +296,4 @@ $('refreshToggle').addEventListener('click',()=>{
   $('refreshToggle').classList.toggle('paused',state.paused);
   if(!state.paused)refresh();
 });
-refresh();
-setInterval(refresh,2000);
+refresh();setInterval(refresh,2000);

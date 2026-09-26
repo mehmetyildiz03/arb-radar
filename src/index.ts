@@ -9,6 +9,7 @@ import { optimizeRoute } from './arbitrage/optimizer.js';
 import { ResearchStore, json } from './research/store.js';
 import { monotonicClock, summarizeLifecycle } from './research/lifecycle.js';
 import { measureCandidate } from './research/measurement.js';
+import { quoteCostBreakdown } from './research/costs.js';
 import {
   runStagedCandidates,
   sharedAsyncResource,
@@ -133,7 +134,8 @@ async function tick(): Promise<void> {
           store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
           return async (amount: number, fixedBlock?: bigint) => {
             const q = await simulateRoute(client, meta, route, amount, value, { extraCostsUsd: 0.05, safetyBps: 100, source, blockNumber: fixedBlock });
-            store.record('executable_quotes', key, { discoveredAtMs, route, quote: q, netProfitUsd: netProfit(q), screen }, q);
+            const costBreakdown = quoteCostBreakdown(q);
+            store.record('executable_quotes', key, { discoveredAtMs, route, quote: q, netProfitUsd: costBreakdown.netProfitUsd, costBreakdown, screen }, q);
             return q;
           };
         },

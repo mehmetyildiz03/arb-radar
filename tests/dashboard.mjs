@@ -42,7 +42,8 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     store.record('executable_quotes','opp-1',{
       route:{token:'0xtoken',buy:{quoteSymbol:'A'},sell:{quoteSymbol:'B'}},
       screen:{grossSpreadPct:8.5},
-      quote:{inputUsd:10,outputUsd:11,gasUsd:.1,extraCostsUsd:.05,safetyMarginUsd:.1,blockNumber:'123'},
+      quote:{inputUsd:10,outputUsd:11,gasUsd:.1,extraCostsUsd:.05,safetyMarginUsd:.1,blockNumber:'123',
+        profile:{blockReadMs:10,buySimulationMs:20,sellSimulationMs:30,buyGasEstimateMs:40,sellGasEstimateMs:50,gasPriceMs:5,blockConfirmMs:10,totalMs:180}},
       netProfitUsd:.75
     },{timestampMs:at+2,blockNumber:123n,source:'fixture'});
     store.record('executable_quotes','opp-2',{status:'unavailable',reason:'fixture failure',route:{token:'0xtoken',buy:{quoteSymbol:'A'},sell:{quoteSymbol:'C'}}},{timestampMs:at+3,blockNumber:null,source:'fixture'});
@@ -55,12 +56,15 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     store.record('executable_quotes','opp-1',{
       route:{token:'0xtoken',buy:{quoteSymbol:'A'},sell:{quoteSymbol:'B'}},
       screen:{grossSpreadPct:8.1},
-      quote:{inputUsd:1,outputUsd:.95,gasUsd:.02,blockNumber:'125'},
+      quote:{inputUsd:1,outputUsd:.95,gasUsd:.02,blockNumber:'125',
+        profile:{blockReadMs:11,buySimulationMs:21,sellSimulationMs:31,buyGasEstimateMs:41,sellGasEstimateMs:51,gasPriceMs:6,blockConfirmMs:11,totalMs:185}},
       netProfitUsd:-.07
     },{timestampMs:at+5,blockNumber:125n,source:'fixture'});
 
     store.record('opportunity_lifecycle','opp-1',{measurementTiming:{
-      discoveryToFirstQuoteStartedMs:20,discoveryToFirstQuoteCompletedMs:45,sizingDurationMs:140,
+      queueDelayMs:5,preparationDurationMs:10,
+      discoveryToFirstQuoteStartedMs:20,discoveryToFirstQuoteCompletedMs:45,firstQuoteDurationMs:25,
+      sizingBarrierWaitMs:30,sizingQueueWaitMs:15,sizingDurationMs:140,sizingTotalPhaseMs:155,
       discoveryToPostSizingLifecycleMs:200,firstExecutableQuoteSucceeded:true,captureCapability:'unproven'
     }},{timestampMs:at+6,blockNumber:null,source:'fixture'});
     store.record('opportunity_lifecycle','opp-1',{targetMs:0,deadlineMissedByMs:0,netProfitUsd:.75},{timestampMs:at+7,blockNumber:123n,source:'fixture'});
@@ -99,6 +103,16 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.radar.p95DeadlineMissMs,120);
     assert.equal(snapshot.radar.latestPositiveOpportunity.key,'opp-1');
     assert.equal(snapshot.radar.latestPositiveOpportunity.latestNetProfitUsd,.75);
+    assert.equal(snapshot.pipeline.phases.queueDelay.medianMs,5);
+    assert.equal(snapshot.pipeline.phases.preparation.medianMs,10);
+    assert.equal(snapshot.pipeline.phases.firstQuote.medianMs,25);
+    assert.equal(snapshot.pipeline.phases.sizingBarrierWait.medianMs,30);
+    assert.equal(snapshot.pipeline.phases.sizingQueueWait.medianMs,15);
+    assert.equal(snapshot.pipeline.phases.sizingExecution.medianMs,140);
+    assert.equal(snapshot.pipeline.dominantPhase.key,'sizingExecution');
+    assert.equal(snapshot.pipeline.simulation.buySimulation.medianMs,20);
+    assert.equal(snapshot.pipeline.simulation.sellGasEstimate.medianMs,50);
+    assert.equal(snapshot.pipeline.dominantSimulationStep.key,'sellGasEstimate');
     assert.equal(snapshot.runtime.queued,5);
     assert.equal(snapshot.runtime.droppedStale,1);
     assert.equal(snapshot.runtime.probesCompleted,4);
@@ -111,9 +125,15 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.opportunities.length,1);
     assert.equal(snapshot.opportunities[0].key,'opp-1');
     assert.equal(snapshot.opportunities[0].status,'positive');
+    assert.equal(snapshot.opportunities[0].firstProbeNetProfitUsd,.75);
     assert.equal(snapshot.opportunities[0].latestNetProfitUsd,-.07);
     assert.equal(snapshot.opportunities[0].bestObservedNetProfitUsd,.75);
+    assert.equal(snapshot.opportunities[0].firstProbeCostBreakdown.netProfitUsd,.75);
+    assert.equal(snapshot.opportunities[0].bestObservedCostBreakdown.reason,'positive-after-explicit-costs');
+    assert.equal(snapshot.opportunities[0].firstProbeProfile.buySimulationMs,20);
     assert.equal(snapshot.opportunities[0].quoteCount,2);
+    assert.equal(snapshot.pnlTraces.firstProbe.find(x=>x.key==='opp-1').netProfitUsd,.75);
+    assert.equal(snapshot.pnlTraces.bestObserved.find(x=>x.key==='opp-1').netProfitUsd,.75);
     assert.equal(snapshot.paperPnl.some(x=>x.key==='old-positive'),false);
 
     const reopened=new ResearchStore(dbPath);

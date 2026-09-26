@@ -74,12 +74,73 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Zaman</th><th>Token</th><th>Rota</th><th>Spread</th><th>Latest net</th><th>Best observed</th><th>Quote</th><th>Blok</th></tr>
+            <tr><th>Zaman</th><th>Token</th><th>Rota</th><th>Spread</th><th>First probe</th><th>Latest net</th><th>Best observed</th><th>Quote</th><th>Blok</th></tr>
           </thead>
           <tbody id="opportunities"></tbody>
         </table>
         <div class="empty" id="oppEmpty">Bu filtre için aday yok.</div>
       </div>
+    </section>
+
+    <section class="grid two detail-grid">
+      <article class="panel cost-panel">
+        <div class="panel-head">
+          <div>
+            <span class="kicker">WHY NEGATIVE?</span>
+            <h2 id="selectedCandidateTitle">Aday seçilmedi</h2>
+            <p class="panel-sub" id="selectedCandidateMeta">Tablodan bir candidate seç.</p>
+          </div>
+          <span class="mini" id="selectedCandidateStatus">—</span>
+        </div>
+        <div class="cost-compare">
+          <div class="cost-column">
+            <div class="cost-title"><span>FIRST PROBE</span><strong id="probeNet">—</strong></div>
+            <div class="cost-row"><span>Input</span><strong id="probeInput">—</strong></div>
+            <div class="cost-row"><span>Router output</span><strong id="probeOutput">—</strong></div>
+            <div class="cost-row emphasis"><span>Quoted edge</span><strong id="probeGross">—</strong></div>
+            <div class="cost-row"><span>Gas</span><strong id="probeGas">—</strong></div>
+            <div class="cost-row"><span>Extra allowance</span><strong id="probeExtra">—</strong></div>
+            <div class="cost-row"><span>Safety margin</span><strong id="probeSafety">—</strong></div>
+            <div class="cost-row total"><span>Net paper</span><strong id="probeNet2">—</strong></div>
+            <p class="reason" id="probeReason">—</p>
+          </div>
+          <div class="cost-column">
+            <div class="cost-title"><span>BEST OBSERVED</span><strong id="bestNet">—</strong></div>
+            <div class="cost-row"><span>Input</span><strong id="bestInput">—</strong></div>
+            <div class="cost-row"><span>Router output</span><strong id="bestOutput">—</strong></div>
+            <div class="cost-row emphasis"><span>Quoted edge</span><strong id="bestGross">—</strong></div>
+            <div class="cost-row"><span>Gas</span><strong id="bestGas">—</strong></div>
+            <div class="cost-row"><span>Extra allowance</span><strong id="bestExtra">—</strong></div>
+            <div class="cost-row"><span>Safety margin</span><strong id="bestSafety">—</strong></div>
+            <div class="cost-row total"><span>Net paper</span><strong id="bestNet2">—</strong></div>
+            <p class="reason" id="bestReason">—</p>
+          </div>
+        </div>
+        <p class="embedded-note">Pool ücretleri, routing ve price impact router output’unun içinde zaten yer alır; mevcut simulator bunları güvenilir biçimde ayrı sayısal kalemlere bölemediği için burada ayrı “slippage/fee maliyeti” uydurulmaz.</p>
+      </article>
+
+      <article class="panel profiler-panel">
+        <div class="panel-head">
+          <div><span class="kicker">PIPELINE PROFILER</span><h2>Gecikme nerede oluşuyor?</h2></div>
+          <span class="mini" id="dominantPhase">dominant —</span>
+        </div>
+        <div class="profile-table">
+          <div class="profile-head"><span>Aşama</span><span>Medyan</span><span>p95</span></div>
+          <div><span>Queue delay</span><strong id="phaseQueueMedian">—</strong><strong id="phaseQueueP95">—</strong></div>
+          <div><span>Preparation</span><strong id="phasePreparationMedian">—</strong><strong id="phasePreparationP95">—</strong></div>
+          <div><span>First quote</span><strong id="phaseQuoteMedian">—</strong><strong id="phaseQuoteP95">—</strong></div>
+          <div><span>Sizing barrier</span><strong id="phaseBarrierMedian">—</strong><strong id="phaseBarrierP95">—</strong></div>
+          <div><span>Sizing queue</span><strong id="phaseSizingQueueMedian">—</strong><strong id="phaseSizingQueueP95">—</strong></div>
+          <div><span>Sizing execution</span><strong id="phaseSizingMedian">—</strong><strong id="phaseSizingP95">—</strong></div>
+        </div>
+        <div class="simulation-profile">
+          <div class="profile-subhead">
+            <span>FIRST-QUOTE RPC SUBSTEPS</span>
+            <span id="dominantSimulation">dominant —</span>
+          </div>
+          <div id="simulationBars" class="simulation-bars"></div>
+        </div>
+      </article>
     </section>
 
     <section class="grid two">
@@ -101,11 +162,15 @@
 
       <article class="panel">
         <div class="panel-head">
-          <div><span class="kicker">PAPER P&L TRACE</span><h2>Quote sonuçları</h2></div>
-          <span class="mini" id="pnlCount">0 quote</span>
+          <div><span class="kicker">PAPER P&L TRACE</span><h2>Candidate sonuçları</h2></div>
+          <span class="mini" id="pnlCount">0 aday</span>
         </div>
-        <div class="chart" id="pnlChart" aria-label="Paper P&L chart"></div>
-        <div class="legend"><span>Sıfır çizgisi dahil</span><span id="pnlLatest">—</span></div>
+        <div class="chart" id="pnlChart" aria-label="First probe and best observed paper P&L chart"></div>
+        <div class="legend pnl-legend">
+          <span><i class="legend-line probe-line"></i>First probe</span>
+          <span><i class="legend-line best-line"></i>Best observed</span>
+          <span id="pnlLatest">—</span>
+        </div>
       </article>
     </section>
 

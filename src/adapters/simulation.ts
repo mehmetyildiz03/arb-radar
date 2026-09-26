@@ -4,10 +4,21 @@ import type { DirectedRoute, ExecutionQuote } from '../domain.js';
 
 const observer: Address = '0x000000000000000000000000000000000000dEaD';
 export interface Valuation { usdPerEth: number; timestampMs: number; source: string }
+export interface SimulationProfile {
+  blockReadMs: number;
+  buySimulationMs: number;
+  sellSimulationMs: number;
+  buyGasEstimateMs: number;
+  sellGasEstimateMs: number;
+  gasPriceMs: number;
+  blockConfirmMs: number;
+  totalMs: number;
+}
 export interface SimulationQuote extends ExecutionQuote {
   kind: 'rpc-simulation'; timestampMs: number; blockNumber: bigint; blockHash: string;
   source: string; inputWei: bigint; tokenOut: bigint; outputWei: bigint;
   gasUnits: bigint; gasPriceWei: bigint; valuation: Valuation; safetyMarginUsd: number;
+  profile: SimulationProfile;
   assumptions: string[];
 }
 export const netProfit = (q: ExecutionQuote): number => q.outputUsd - q.inputUsd - q.gasUsd - (q.extraCostsUsd ?? 0) - (q.safetyMarginUsd ?? 0);
@@ -30,25 +41,41 @@ export function selectMarkets(launch: TradableLaunch, route: DirectedRoute) {
   return { buy, sell, buyRoute, sellRoute };
 }
 
+function elapsed(start: number, end: number): number {
+  const value = end - start;
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 /** Only eth_call, eth_estimateGas and state reads. Never exposes a submission request. */
 export async function simulateRoute(client: PublicClient, launch: TradableLaunch, route: DirectedRoute,
-  inputUsd: number, valuation: Valuation, options: { extraCostsUsd: number; safetyBps: number; source: string; blockNumber?: bigint },
+  inputUsd: number, valuation: Valuation, options: { extraCostsUsd: number; safetyBps: number; source: string; blockNumber?: bigint; clockNow?: () => number },
 ): Promise<SimulationQuote> {
   if (![inputUsd, valuation.usdPerEth].every(n => Number.isFinite(n) && n > 0) ||
       !Number.isFinite(options.extraCostsUsd) || options.extraCostsUsd < 0 ||
       !Number.isFinite(options.safetyBps) || options.safetyBps <= 0 || options.safetyBps >= 10_000 ||
       !Number.isFinite(valuation.timestampMs) || Date.now() - valuation.timestampMs > 60_000 || valuation.timestampMs > Date.now()) throw new Error('Invalid/stale valuation or cost assumptions');
+
+  const clockNow = options.clockNow ?? (() => performance.now());
+  const totalStarted = clockNow();
   const { buy, sell, buyRoute, sellRoute } = selectMarkets(launch, route);
+
+  let started = clockNow();
   const block = await client.getBlock(options.blockNumber === undefined ? { blockTag: 'latest' } : { blockNumber: options.blockNumber });
+  const blockReadMs = elapsed(started, clockNow());
   if (block.number === null || !block.hash) throw new Error('No canonical block');
+
   const inputWei = parseEther((inputUsd / valuation.usdPerEth).toFixed(18));
   if (inputWei <= 0n) throw new Error('Input rounds to zero');
   const buyArgs = [launch.token, [{ market: buy.index, hops: buyRoute.buyHops, amountIn: inputWei }], 0n, observer] as const;
   const buyState = [{ address: observer, balance: inputWei * 10n + parseEther('1') }];
   const common = { address: launch.router, abi: multiRouterAbi, account: observer, blockNumber: block.number } as const;
+
+  started = clockNow();
   const buyResult = await client.simulateContract({ ...common, functionName: 'buyWithEth', args: buyArgs, value: inputWei, stateOverride: buyState });
+  const buySimulationMs = elapsed(started, clockNow());
   const tokenOut = buyResult.result;
   if (tokenOut <= 0n) throw new Error('Empty buy quote');
+
   // OpenZeppelin layout verified against the pinned Par SDK quoteSellToEth implementation.
   const balanceSlot = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [observer, 0n]));
   const allowanceInner = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [observer, 1n]));
@@ -58,18 +85,65 @@ export async function simulateRoute(client: PublicClient, launch: TradableLaunch
     { slot: allowanceSlot, value: toHex(maxUint256, { size: 32 }) },
   ] }];
   const sellArgs = [launch.token, [{ market: sell.index, hops: sellRoute.sellHops, amountIn: tokenOut }], 0n, observer] as const;
+
+  started = clockNow();
   const sellResult = await client.simulateContract({ ...common, functionName: 'sellToEth', args: sellArgs, stateOverride: sellState });
+  const sellSimulationMs = elapsed(started, clockNow());
+
+  started = clockNow();
   const buyGas = await client.estimateContractGas({ ...common, functionName: 'buyWithEth', args: buyArgs, value: inputWei, stateOverride: buyState });
+  const buyGasEstimateMs = elapsed(started, clockNow());
+
+  started = clockNow();
   const sellGas = await client.estimateContractGas({ ...common, functionName: 'sellToEth', args: sellArgs, stateOverride: sellState });
+  const sellGasEstimateMs = elapsed(started, clockNow());
+
+  started = clockNow();
   const gasPriceWei = await client.getGasPrice();
+  const gasPriceMs = elapsed(started, clockNow());
+
+  started = clockNow();
   const confirm = await client.getBlock({ blockNumber: block.number });
+  const blockConfirmMs = elapsed(started, clockNow());
   if (confirm.hash !== block.hash) throw new Error('Block changed during simulation');
+
   const gasUnits = (buyGas + sellGas) * 120n / 100n;
   const outputWei = sellResult.result;
   const outputUsd = Number(formatEther(outputWei)) * valuation.usdPerEth;
-  return { kind: 'rpc-simulation', timestampMs: Date.now(), blockNumber: block.number, blockHash: block.hash,
-    source: options.source, inputUsd, outputUsd, inputWei, tokenOut, outputWei, gasUnits, gasPriceWei,
+  const profile: SimulationProfile = {
+    blockReadMs,
+    buySimulationMs,
+    sellSimulationMs,
+    buyGasEstimateMs,
+    sellGasEstimateMs,
+    gasPriceMs,
+    blockConfirmMs,
+    totalMs: elapsed(totalStarted, clockNow()),
+  };
+
+  return {
+    kind: 'rpc-simulation',
+    timestampMs: Date.now(),
+    blockNumber: block.number,
+    blockHash: block.hash,
+    source: options.source,
+    inputUsd,
+    outputUsd,
+    inputWei,
+    tokenOut,
+    outputWei,
+    gasUnits,
+    gasPriceWei,
     gasUsd: Number(formatEther(gasUnits * gasPriceWei)) * valuation.usdPerEth,
-    extraCostsUsd: options.extraCostsUsd, safetyMarginUsd: outputUsd * options.safetyBps / 10_000, valuation,
-    assumptions: ['Disjoint pools; independently simulated legs at one block', 'Gas estimate +20%; explicit extra allowance for L1/routing/failure costs', 'Paper estimate; atomic executor and inclusion unvalidated'] };
+    extraCostsUsd: options.extraCostsUsd,
+    safetyMarginUsd: outputUsd * options.safetyBps / 10_000,
+    valuation,
+    profile,
+    assumptions: [
+      'Disjoint pools; independently simulated legs at one block',
+      'Router output already embeds pool fees, routing and price impact; those effects are not independently decomposed',
+      'Gas estimate +20%; explicit extra allowance for L1/routing/failure costs',
+      'Paper estimate; atomic executor and inclusion unvalidated',
+    ],
+  };
 }
