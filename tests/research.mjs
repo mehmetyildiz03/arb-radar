@@ -15,7 +15,9 @@ import { ShadowState } from '../dist/research/shadow.js';
 import { replayTrades } from '../dist/research/replay.js';
 import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.js';
 import { measureCandidate } from '../dist/research/measurement.js';
+import { runStagedCandidates, sharedAsyncResource, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
+import { loadConfig } from '../dist/config.js';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -193,4 +195,97 @@ test('original LONG5 is address-pinned and never substituted when unavailable', 
   const noHistory=originalReport({...fixture,trades:{...fixture.trades,status:200,body:[]}});
   assert.equal(noHistory.status,'historical-trades-unavailable');assert.equal(noHistory.netPnlUsd,null);
   assert.throws(()=>originalReport({...fixture,token}),/target mismatch/);
+});
+
+
+test('staged scheduler lets later candidates probe before earlier candidate sizing', async () => {
+  let now=0;
+  const events=[];
+  const candidates=[
+    {key:'A',discoveredAtMs:0,priority:10,value:'A'},
+    {key:'B',discoveredAtMs:0,priority:9,value:'B'},
+  ];
+  const result=await runStagedCandidates(candidates,{
+    probeConcurrency:1,sizingConcurrency:1,maxQueueAgeMs:10_000,now:()=>now
+  },async(candidate,controls)=>measureCandidate({
+    discoveredAtMs:candidate.discoveredAtMs,
+    withProbePhase:controls.withProbePhase,
+    beforeSizing:controls.waitForProbeStage,
+    withSizingPhase:controls.withSizingPhase,
+    prepare:async()=>candidate.value,
+    quote:async value=>{events.push('probe:'+value);now+=10;return 1},
+    size:async value=>{events.push('size:'+value);now+=100;return value},
+    profit:q=>q,recordSample:()=>{},recordTiming:()=>{},
+  },{now:()=>now,sleep:async ms=>{now+=ms}}));
+  assert.equal(result.every(x=>x.status==='fulfilled'),true);
+  assert.deepEqual(events.slice(0,2),['probe:A','probe:B']);
+  assert.ok(events.indexOf('size:A')>events.indexOf('probe:B'));
+});
+
+test('staged scheduler drops stale candidates before expensive probe work', async () => {
+  let now=5000,work=0,metrics;
+  const [result]=await runStagedCandidates([
+    {key:'stale',discoveredAtMs:0,priority:1,value:null}
+  ],{
+    probeConcurrency:2,sizingConcurrency:1,maxQueueAgeMs:1000,now:()=>now,onMetrics:m=>{metrics=m}
+  },async(_candidate,controls)=>controls.withProbePhase(async()=>{work++;return 1}));
+  assert.equal(result.status,'rejected');
+  assert.ok(result.reason instanceof StaleCandidateError);
+  assert.equal(work,0);
+  assert.equal(metrics.droppedStale,1);
+  assert.equal(metrics.probesStarted,0);
+});
+
+test('staged scheduler respects configured probe and sizing concurrency', async () => {
+  let activeProbe=0,maxProbe=0,activeSizing=0,maxSizing=0;
+  const gate=[]; let release;
+  const wait=new Promise(r=>{release=r});
+  const candidates=Array.from({length:4},(_,i)=>({key:String(i),discoveredAtMs:0,priority:10-i,value:i}));
+  const promise=runStagedCandidates(candidates,{
+    probeConcurrency:2,sizingConcurrency:2,maxQueueAgeMs:10_000,now:()=>0
+  },async(candidate,controls)=>{
+    await controls.withProbePhase(async()=>{
+      activeProbe++;maxProbe=Math.max(maxProbe,activeProbe);gate.push(candidate.key);
+      if(gate.length===2)release();
+      await wait;activeProbe--;
+    });
+    await controls.waitForProbeStage();
+    await controls.withSizingPhase(async()=>{
+      activeSizing++;maxSizing=Math.max(maxSizing,activeSizing);
+      await Promise.resolve();activeSizing--;
+    });
+  });
+  await promise;
+  assert.equal(maxProbe,2);
+  assert.equal(maxSizing,2);
+});
+
+
+test('shared async resource performs one underlying fetch per tick scope', async () => {
+  let calls=0;
+  const getValue=sharedAsyncResource(async()=>{calls++;await Promise.resolve();return 42});
+  const values=await Promise.all([getValue(),getValue(),getValue(),getValue()]);
+  assert.deepEqual(values,[42,42,42,42]);
+  assert.equal(calls,1);
+});
+
+
+test('scheduler concurrency configuration is user-settable but safely bounded', () => {
+  const configured=loadConfig({
+    PROBE_CONCURRENCY:'3',
+    SIZING_CONCURRENCY:'2',
+    CANDIDATE_MAX_QUEUE_MS:'1750'
+  });
+  assert.equal(configured.probeConcurrency,3);
+  assert.equal(configured.sizingConcurrency,2);
+  assert.equal(configured.candidateMaxQueueMs,1750);
+
+  const clamped=loadConfig({
+    PROBE_CONCURRENCY:'999',
+    SIZING_CONCURRENCY:'999',
+    CANDIDATE_MAX_QUEUE_MS:'10'
+  });
+  assert.equal(clamped.probeConcurrency,8);
+  assert.equal(clamped.sizingConcurrency,4);
+  assert.equal(clamped.candidateMaxQueueMs,100);
 });

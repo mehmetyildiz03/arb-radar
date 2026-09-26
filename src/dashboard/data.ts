@@ -84,9 +84,25 @@ export interface DashboardSnapshot {
   timings: Array<Record<string, unknown>>;
   rpcLatency: Array<Record<string, unknown>>;
   paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  runtime: {
+    lastTickAtMs: number | null;
+    tickDurationMs: number | null;
+    queued: number;
+    droppedStale: number;
+    probesStarted: number;
+    probesCompleted: number;
+    sizingStarted: number;
+    sizingCompleted: number;
+    maxActiveProbes: number;
+    maxActiveSizing: number;
+    probeConcurrency: number | null;
+    sizingConcurrency: number | null;
+    candidateMaxQueueMs: number | null;
+    valuationFetches: number;
+  };
 }
 
-const tableNames = ['launches','market_snapshots','route_screens','executable_quotes','opportunity_lifecycle','rpc_latency_samples'] as const;
+const tableNames = ['launches','market_snapshots','route_screens','executable_quotes','opportunity_lifecycle','rpc_latency_samples','radar_runtime'] as const;
 type TableName = typeof tableNames[number];
 const DEFAULT_WINDOW_MS = 60_000;
 const ANALYSIS_ROW_CAP = 5_000;
@@ -318,6 +334,7 @@ export function buildDashboardSnapshot(
     timings: [] as Array<Record<string,unknown>>,
     rpcLatency: [] as Array<Record<string,unknown>>,
     paperPnl: [] as Array<{timestampMs:number;netProfitUsd:number;key:string}>,
+    runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0 },
   };
 
   if (!existsSync(path)) return emptyBase;
@@ -334,6 +351,30 @@ export function buildDashboardSnapshot(
     const quoteRows = rowsSince(db,'executable_quotes',fromMs);
     const lifecycle = rowsSince(db,'opportunity_lifecycle',fromMs);
     const rpc = rowsSince(db,'rpc_latency_samples',fromMs);
+    const runtimeRows = rowsSince(db,'radar_runtime',fromMs,20);
+    let runtime: DashboardSnapshot['runtime'] = emptyBase.runtime;
+    for (const row of runtimeRows) {
+      const payload=parsePayload(row.payload);
+      const scheduler=payload?.scheduler as Record<string,unknown> | undefined;
+      if (!payload || !scheduler) continue;
+      runtime = {
+        lastTickAtMs: row.timestamp_ms,
+        tickDurationMs: num(payload.durationMs),
+        queued: num(scheduler.queued) ?? 0,
+        droppedStale: num(scheduler.droppedStale) ?? 0,
+        probesStarted: num(scheduler.probesStarted) ?? 0,
+        probesCompleted: num(scheduler.probesCompleted) ?? 0,
+        sizingStarted: num(scheduler.sizingStarted) ?? 0,
+        sizingCompleted: num(scheduler.sizingCompleted) ?? 0,
+        maxActiveProbes: num(scheduler.maxActiveProbes) ?? 0,
+        maxActiveSizing: num(scheduler.maxActiveSizing) ?? 0,
+        probeConcurrency: num(payload.probeConcurrency),
+        sizingConcurrency: num(payload.sizingConcurrency),
+        candidateMaxQueueMs: num(payload.candidateMaxQueueMs),
+        valuationFetches: num(payload.valuationFetches) ?? 0,
+      };
+      break;
+    }
 
     const qualifyingScreens = screens.reduce((total,row)=>{
       const payload=parsePayload(row.payload);
@@ -450,6 +491,7 @@ export function buildDashboardSnapshot(
       timings:timings.sort((a,b)=>(b.timestampMs as number)-(a.timestampMs as number)).slice(0,clampLimit(limit)),
       rpcLatency:rpcLatency.slice(0,clampLimit(limit)),
       paperPnl,
+      runtime,
     };
   } finally {
     db.close();
