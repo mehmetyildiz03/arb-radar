@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
+import { quoteCostBreakdown, type QuoteCostBreakdown } from '../research/costs.js';
 
 interface ObservationRow {
   id: number;
@@ -20,10 +21,19 @@ interface OpportunitySummary extends Record<string, unknown> {
   buyMarket: unknown;
   sellMarket: unknown;
   grossSpreadPct: number | null;
+  firstProbeTimestampMs: number | null;
+  firstProbeInputUsd: number | null;
+  firstProbeNetProfitUsd: number | null;
+  firstProbeCostBreakdown: QuoteCostBreakdown | null;
+  firstProbeProfile: Record<string, number> | null;
   latestInputUsd: number | null;
   latestNetProfitUsd: number | null;
+  latestCostBreakdown: QuoteCostBreakdown | null;
+  latestProfile: Record<string, number> | null;
   bestObservedInputUsd: number | null;
   bestObservedNetProfitUsd: number | null;
+  bestObservedCostBreakdown: QuoteCostBreakdown | null;
+  bestObservedProfile: Record<string, number> | null;
   quoteCount: number;
   blockNumber: unknown;
   source: string;
@@ -84,6 +94,16 @@ export interface DashboardSnapshot {
   timings: Array<Record<string, unknown>>;
   rpcLatency: Array<Record<string, unknown>>;
   paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  pnlTraces: {
+    firstProbe: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+    bestObserved: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  };
+  pipeline: {
+    phases: Record<string, { medianMs: number | null; p95Ms: number | null; samples: number }>;
+    dominantPhase: { key: string; medianMs: number } | null;
+    simulation: Record<string, { medianMs: number | null; p95Ms: number | null; samples: number }>;
+    dominantSimulationStep: { key: string; medianMs: number } | null;
+  };
   runtime: {
     lastTickAtMs: number | null;
     tickDurationMs: number | null;
@@ -173,6 +193,47 @@ function pct(numerator: number, denominator: number): number | null {
   return denominator > 0 ? (numerator / denominator) * 100 : null;
 }
 
+function latencySummary(values: number[]): { medianMs: number | null; p95Ms: number | null; samples: number } {
+  const finite = values.filter(Number.isFinite);
+  return { medianMs: percentile(finite,0.5), p95Ms: percentile(finite,0.95), samples: finite.length };
+}
+
+function dominantLatency(summaries: Record<string,{ medianMs:number|null }>): { key:string; medianMs:number } | null {
+  let best: { key:string; medianMs:number } | null = null;
+  for (const [key,summary] of Object.entries(summaries)) {
+    if (typeof summary.medianMs !== 'number' || !Number.isFinite(summary.medianMs)) continue;
+    if (!best || summary.medianMs > best.medianMs) best={key,medianMs:summary.medianMs};
+  }
+  return best;
+}
+
+function quoteBreakdownFromPayload(payload: Record<string,unknown>, quote: Record<string,unknown> | undefined): QuoteCostBreakdown | null {
+  const stored=payload.costBreakdown;
+  if (stored && typeof stored === 'object' && !Array.isArray(stored)) return stored as QuoteCostBreakdown;
+  if (!quote) return null;
+  try {
+    return quoteCostBreakdown({
+      inputUsd: Number(quote.inputUsd),
+      outputUsd: Number(quote.outputUsd),
+      gasUsd: Number(quote.gasUsd),
+      extraCostsUsd: quote.extraCostsUsd === undefined ? 0 : Number(quote.extraCostsUsd),
+      safetyMarginUsd: quote.safetyMarginUsd === undefined ? 0 : Number(quote.safetyMarginUsd),
+    });
+  } catch {
+    return null;
+  }
+}
+
+function quoteProfile(quote: Record<string,unknown> | undefined): Record<string,number> | null {
+  const raw=quote?.profile;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const profile: Record<string,number>={};
+  for (const [key,value] of Object.entries(raw as Record<string,unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) profile[key]=value;
+  }
+  return Object.keys(profile).length ? profile : null;
+}
+
 function freshness(lastObservationAtMs: number | null, nowMs: number): { ageMs: number | null; freshness: Freshness } {
   if (lastObservationAtMs === null) return { ageMs: null, freshness: 'idle' };
   const ageMs = Math.max(0, nowMs - lastObservationAtMs);
@@ -202,9 +263,17 @@ function routeFields(payload: Record<string, unknown>): {
 function summarizeOpportunities(rows: ObservationRow[]): {
   opportunities: OpportunitySummary[];
   paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  pnlTraces: {
+    firstProbe: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+    bestObserved: Array<{ timestampMs: number; netProfitUsd: number; key: string }>;
+  };
   latestPositiveOpportunity: OpportunitySummary | null;
 } {
-  type Mutable = OpportunitySummary & { _hasNumeric: boolean };
+  type Mutable = OpportunitySummary & {
+    _hasNumeric: boolean;
+    _firstProbeId: number | null;
+    _bestTimestampMs: number | null;
+  };
   const groups = new Map<string, Mutable>();
   const paperPnl: Array<{ timestampMs: number; netProfitUsd: number; key: string }> = [];
   let latestPositiveRow: { row: ObservationRow; payload: Record<string,unknown> } | null = null;
@@ -213,10 +282,12 @@ function summarizeOpportunities(rows: ObservationRow[]): {
     const payload = parsePayload(row.payload);
     if (!payload) continue;
     const fields = routeFields(payload);
-    const current = groups.get(row.observation_key);
     const quote = payload.quote as Record<string,unknown> | undefined;
     const netProfitUsd = num(payload.netProfitUsd);
+    const breakdown = quoteBreakdownFromPayload(payload,quote);
+    const profile = quoteProfile(quote);
     const isUnavailable = payload.status === 'unavailable';
+    const current = groups.get(row.observation_key);
 
     if (!current) {
       groups.set(row.observation_key, {
@@ -227,27 +298,54 @@ function summarizeOpportunities(rows: ObservationRow[]): {
         buyMarket: fields.buyMarket,
         sellMarket: fields.sellMarket,
         grossSpreadPct: fields.grossSpreadPct,
+        firstProbeTimestampMs: netProfitUsd === null ? null : row.timestamp_ms,
+        firstProbeInputUsd: quote ? num(quote.inputUsd) : null,
+        firstProbeNetProfitUsd: netProfitUsd,
+        firstProbeCostBreakdown: breakdown,
+        firstProbeProfile: profile,
         latestInputUsd: quote ? num(quote.inputUsd) : null,
         latestNetProfitUsd: netProfitUsd,
+        latestCostBreakdown: breakdown,
+        latestProfile: profile,
         bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
         bestObservedNetProfitUsd: netProfitUsd,
+        bestObservedCostBreakdown: breakdown,
+        bestObservedProfile: profile,
         quoteCount: netProfitUsd === null ? 0 : 1,
         blockNumber: quote?.blockNumber ?? row.block_number,
         source: row.source,
         reason: isUnavailable ? String(payload.reason ?? 'unavailable') : null,
         _hasNumeric: netProfitUsd !== null,
+        _firstProbeId: netProfitUsd === null ? null : row.id,
+        _bestTimestampMs: netProfitUsd === null ? null : row.timestamp_ms,
       });
     } else {
       if ((current.token === null || current.token === undefined) && fields.token !== null) current.token = fields.token;
       if ((current.buyMarket === null || current.buyMarket === undefined) && fields.buyMarket !== null) current.buyMarket = fields.buyMarket;
       if ((current.sellMarket === null || current.sellMarket === undefined) && fields.sellMarket !== null) current.sellMarket = fields.sellMarket;
       if (current.grossSpreadPct === null && fields.grossSpreadPct !== null) current.grossSpreadPct = fields.grossSpreadPct;
+
+      // rows arrive newest-first, so the first numeric row retained above is the latest.
       if (netProfitUsd !== null) {
         current.quoteCount++;
         current._hasNumeric = true;
+        const earlierThanFirst = current.firstProbeTimestampMs === null ||
+          row.timestamp_ms < current.firstProbeTimestampMs ||
+          (row.timestamp_ms === current.firstProbeTimestampMs && (current._firstProbeId === null || row.id < current._firstProbeId));
+        if (earlierThanFirst) {
+          current.firstProbeTimestampMs = row.timestamp_ms;
+          current.firstProbeInputUsd = quote ? num(quote.inputUsd) : null;
+          current.firstProbeNetProfitUsd = netProfitUsd;
+          current.firstProbeCostBreakdown = breakdown;
+          current.firstProbeProfile = profile;
+          current._firstProbeId = row.id;
+        }
         if (current.bestObservedNetProfitUsd === null || netProfitUsd > current.bestObservedNetProfitUsd) {
           current.bestObservedNetProfitUsd = netProfitUsd;
           current.bestObservedInputUsd = quote ? num(quote.inputUsd) : null;
+          current.bestObservedCostBreakdown = breakdown;
+          current.bestObservedProfile = profile;
+          current._bestTimestampMs = row.timestamp_ms;
         }
       }
     }
@@ -260,12 +358,24 @@ function summarizeOpportunities(rows: ObservationRow[]): {
     }
   }
 
-  const opportunities = [...groups.values()]
-    .map(({ _hasNumeric, ...item }) => {
+  const allMutable=[...groups.values()];
+  const opportunities = allMutable
+    .map(({ _hasNumeric, _firstProbeId, _bestTimestampMs, ...item }) => {
       if (_hasNumeric) item.status = (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
       return item;
     })
     .sort((a,b)=>b.timestampMs-a.timestampMs);
+
+  const firstProbe = allMutable
+    .filter(x=>x.firstProbeTimestampMs !== null && x.firstProbeNetProfitUsd !== null)
+    .map(x=>({timestampMs:x.firstProbeTimestampMs!,netProfitUsd:x.firstProbeNetProfitUsd!,key:x.key}))
+    .sort((a,b)=>a.timestampMs-b.timestampMs)
+    .slice(-120);
+  const bestObserved = allMutable
+    .filter(x=>x.firstProbeTimestampMs !== null && x.bestObservedNetProfitUsd !== null)
+    .map(x=>({timestampMs:x.firstProbeTimestampMs!,netProfitUsd:x.bestObservedNetProfitUsd!,key:x.key}))
+    .sort((a,b)=>a.timestampMs-b.timestampMs)
+    .slice(-120);
 
   let latestPositiveOpportunity: OpportunitySummary | null = null;
   if (latestPositiveRow) {
@@ -273,6 +383,8 @@ function summarizeOpportunities(rows: ObservationRow[]): {
     const quote = payload.quote as Record<string,unknown> | undefined;
     const fields = routeFields(payload);
     const netProfitUsd = num(payload.netProfitUsd);
+    const breakdown=quoteBreakdownFromPayload(payload,quote);
+    const profile=quoteProfile(quote);
     latestPositiveOpportunity = {
       key: row.observation_key,
       timestampMs: row.timestamp_ms,
@@ -281,10 +393,19 @@ function summarizeOpportunities(rows: ObservationRow[]): {
       buyMarket: fields.buyMarket,
       sellMarket: fields.sellMarket,
       grossSpreadPct: fields.grossSpreadPct,
+      firstProbeTimestampMs: row.timestamp_ms,
+      firstProbeInputUsd: quote ? num(quote.inputUsd) : null,
+      firstProbeNetProfitUsd: netProfitUsd,
+      firstProbeCostBreakdown: breakdown,
+      firstProbeProfile: profile,
       latestInputUsd: quote ? num(quote.inputUsd) : null,
       latestNetProfitUsd: netProfitUsd,
+      latestCostBreakdown: breakdown,
+      latestProfile: profile,
       bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
       bestObservedNetProfitUsd: netProfitUsd,
+      bestObservedCostBreakdown: breakdown,
+      bestObservedProfile: profile,
       quoteCount: 1,
       blockNumber: quote?.blockNumber ?? row.block_number,
       source: row.source,
@@ -295,6 +416,7 @@ function summarizeOpportunities(rows: ObservationRow[]): {
   return {
     opportunities,
     paperPnl: paperPnl.sort((a,b)=>a.timestampMs-b.timestampMs).slice(-120),
+    pnlTraces:{firstProbe,bestObserved},
     latestPositiveOpportunity,
   };
 }
@@ -334,6 +456,13 @@ export function buildDashboardSnapshot(
     timings: [] as Array<Record<string,unknown>>,
     rpcLatency: [] as Array<Record<string,unknown>>,
     paperPnl: [] as Array<{timestampMs:number;netProfitUsd:number;key:string}>,
+    pnlTraces:{firstProbe:[],bestObserved:[]},
+    pipeline:{
+      phases:{},
+      dominantPhase:null,
+      simulation:{},
+      dominantSimulationStep:null,
+    },
     runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0 },
   };
 
@@ -389,7 +518,7 @@ export function buildDashboardSnapshot(
       if (typeof route?.token === 'string') tokens.add(route.token.toLowerCase());
     }
 
-    const { opportunities: allOpportunities, paperPnl, latestPositiveOpportunity } = summarizeOpportunities(quoteRows);
+    const { opportunities: allOpportunities, paperPnl, pnlTraces, latestPositiveOpportunity } = summarizeOpportunities(quoteRows);
     for (const item of allOpportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
 
     const quoteBackedCandidates = allOpportunities.filter(x=>x.quoteCount > 0).length;
@@ -398,7 +527,11 @@ export function buildDashboardSnapshot(
     const unavailableQuotes = allOpportunities.filter(x=>x.status === 'unavailable').length;
 
     const timings: Array<Record<string,unknown>> = [];
+    const queueDelays: number[] = [];
+    const preparationDurations: number[] = [];
     const firstQuoteDurations: number[] = [];
+    const sizingBarrierWaits: number[] = [];
+    const sizingQueueWaits: number[] = [];
     const sizingDurations: number[] = [];
     const deadlineMisses: number[] = [];
     let lifecycleDeadlineSamples = 0;
@@ -413,14 +546,29 @@ export function buildDashboardSnapshot(
         seenTimingKeys.add(row.observation_key);
         const firstQuote=num(timing.discoveryToFirstQuoteCompletedMs);
         const sizing=num(timing.sizingDurationMs);
-        if (firstQuote !== null) firstQuoteDurations.push(firstQuote);
+        const queueDelay=num(timing.queueDelayMs);
+        const preparation=num(timing.preparationDurationMs);
+        const firstQuoteDuration=num(timing.firstQuoteDurationMs);
+        const sizingBarrierWait=num(timing.sizingBarrierWaitMs);
+        const sizingQueueWait=num(timing.sizingQueueWaitMs);
+        if (queueDelay !== null) queueDelays.push(queueDelay);
+        if (preparation !== null) preparationDurations.push(preparation);
+        if (firstQuoteDuration !== null) firstQuoteDurations.push(firstQuoteDuration);
+        if (sizingBarrierWait !== null) sizingBarrierWaits.push(sizingBarrierWait);
+        if (sizingQueueWait !== null) sizingQueueWaits.push(sizingQueueWait);
         if (sizing !== null) sizingDurations.push(sizing);
         timings.push({
           key:row.observation_key,
           timestampMs:row.timestamp_ms,
+          queueDelayMs:queueDelay,
+          preparationDurationMs:preparation,
           discoveryToFirstQuoteStartedMs:num(timing.discoveryToFirstQuoteStartedMs),
           discoveryToFirstQuoteCompletedMs:firstQuote,
+          firstQuoteDurationMs:firstQuoteDuration,
+          sizingBarrierWaitMs:sizingBarrierWait,
+          sizingQueueWaitMs:sizingQueueWait,
           sizingDurationMs:sizing,
+          sizingTotalPhaseMs:num(timing.sizingTotalPhaseMs),
           discoveryToPostSizingLifecycleMs:num(timing.discoveryToPostSizingLifecycleMs),
           firstExecutableQuoteSucceeded:timing.firstExecutableQuoteSucceeded === true,
           captureCapability:timing.captureCapability ?? null,
@@ -442,6 +590,35 @@ export function buildDashboardSnapshot(
       return [{ timestampMs:row.timestamp_ms,method:row.observation_key,durationMs:duration,status:payload?.status ?? null }];
     });
     const durations=rpcLatency.map(x=>x.durationMs as number);
+
+    const phaseSummaries = {
+      queueDelay: latencySummary(queueDelays),
+      preparation: latencySummary(preparationDurations),
+      firstQuote: latencySummary(firstQuoteDurations),
+      sizingBarrierWait: latencySummary(sizingBarrierWaits),
+      sizingQueueWait: latencySummary(sizingQueueWaits),
+      sizingExecution: latencySummary(sizingDurations),
+    };
+
+    const simulationValues: Record<string,number[]> = {
+      blockRead:[],buySimulation:[],sellSimulation:[],buyGasEstimate:[],sellGasEstimate:[],gasPrice:[],blockConfirm:[],total:[]
+    };
+    for (const row of quoteRows) {
+      const payload=parsePayload(row.payload);
+      const quote=payload?.quote as Record<string,unknown> | undefined;
+      const profile=quoteProfile(quote);
+      if (!profile) continue;
+      for (const [targetKey,sourceKey] of [
+        ['blockRead','blockReadMs'],['buySimulation','buySimulationMs'],['sellSimulation','sellSimulationMs'],
+        ['buyGasEstimate','buyGasEstimateMs'],['sellGasEstimate','sellGasEstimateMs'],['gasPrice','gasPriceMs'],
+        ['blockConfirm','blockConfirmMs'],['total','totalMs']
+      ] as const) {
+        const value=profile[sourceKey];
+        if (typeof value === 'number' && Number.isFinite(value)) simulationValues[targetKey].push(value);
+      }
+    }
+    const simulationSummaries: Record<string,{medianMs:number|null;p95Ms:number|null;samples:number}>={};
+    for (const [key,values] of Object.entries(simulationValues)) simulationSummaries[key]=latencySummary(values);
 
     const lastObservationAtMs=latestTimestamp(db);
     const fresh=freshness(lastObservationAtMs,generatedAtMs);
@@ -491,6 +668,13 @@ export function buildDashboardSnapshot(
       timings:timings.sort((a,b)=>(b.timestampMs as number)-(a.timestampMs as number)).slice(0,clampLimit(limit)),
       rpcLatency:rpcLatency.slice(0,clampLimit(limit)),
       paperPnl,
+      pnlTraces,
+      pipeline:{
+        phases:phaseSummaries,
+        dominantPhase:dominantLatency(phaseSummaries),
+        simulation:simulationSummaries,
+        dominantSimulationStep:dominantLatency(Object.fromEntries(Object.entries(simulationSummaries).filter(([key])=>key!=='total'))),
+      },
       runtime,
     };
   } finally {
