@@ -17,6 +17,7 @@ import { trackLifecycle, summarizeLifecycle } from '../dist/research/lifecycle.j
 import { measureCandidate } from '../dist/research/measurement.js';
 import { runStagedCandidates, sharedAsyncResource, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
+import { loadConfig } from '../dist/config.js';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -266,4 +267,25 @@ test('shared async resource performs one underlying fetch per tick scope', async
   const values=await Promise.all([getValue(),getValue(),getValue(),getValue()]);
   assert.deepEqual(values,[42,42,42,42]);
   assert.equal(calls,1);
+});
+
+
+test('scheduler concurrency configuration is user-settable but safely bounded', () => {
+  const configured=loadConfig({
+    PROBE_CONCURRENCY:'3',
+    SIZING_CONCURRENCY:'2',
+    CANDIDATE_MAX_QUEUE_MS:'1750'
+  });
+  assert.equal(configured.probeConcurrency,3);
+  assert.equal(configured.sizingConcurrency,2);
+  assert.equal(configured.candidateMaxQueueMs,1750);
+
+  const clamped=loadConfig({
+    PROBE_CONCURRENCY:'999',
+    SIZING_CONCURRENCY:'999',
+    CANDIDATE_MAX_QUEUE_MS:'10'
+  });
+  assert.equal(clamped.probeConcurrency,8);
+  assert.equal(clamped.sizingConcurrency,4);
+  assert.equal(clamped.candidateMaxQueueMs,100);
 });
