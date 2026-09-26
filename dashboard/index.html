@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Arb Radar · Paper Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow"><span class="pulse" id="pulse"></span> ROBINHOOD CHAIN · PAPER RESEARCH</div>
+        <h1>Arb Radar</h1>
+        <p class="sub">Par multi-market dislocations · amount-sensitive simulations · lifecycle telemetry</p>
+      </div>
+      <div class="top-actions">
+        <span class="pill safe">READ ONLY</span>
+        <span class="pill" id="updated">Veri bekleniyor</span>
+      </div>
+    </header>
+
+    <section class="warning">
+      <strong>Paper-only research.</strong>
+      Bu panel işlem göndermez. Last-price spread yalnızca tarama sinyalidir; kâr sayıları yalnızca RPC simulation ile desteklenmiş paper tahminleridir.
+    </section>
+
+    <section class="metrics" aria-label="Radar özeti">
+      <article class="metric"><span class="metric-label">Veri durumu</span><strong id="dbStatus">—</strong><small id="lastSeen">SQLite bekleniyor</small></article>
+      <article class="metric"><span class="metric-label">Yakın dönem fee-floor</span><strong id="candidateCount">—</strong><small>son ekran örnekleri</small></article>
+      <article class="metric"><span class="metric-label">Pozitif executable quote</span><strong id="positiveCount">—</strong><small>son quote örnekleri</small></article>
+      <article class="metric"><span class="metric-label">RPC medyan / p95</span><strong id="rpcMetric">—</strong><small>ms</small></article>
+    </section>
+
+    <section class="grid two">
+      <article class="panel">
+        <div class="panel-head">
+          <div><span class="kicker">EXECUTABLE QUOTES</span><h2>Son fırsatlar</h2></div>
+          <span class="mini" id="quoteTotal">0 kayıt</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Zaman</th><th>Rota</th><th>Spread</th><th>Girdi</th><th>Net paper</th><th>Blok</th></tr></thead>
+            <tbody id="opportunities"></tbody>
+          </table>
+          <div class="empty" id="oppEmpty">Henüz executable quote yok. Radar veri topladıkça burada görünecek.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div><span class="kicker">LATENCY</span><h2>RPC gecikmesi</h2></div>
+          <span class="mini" id="rpcCount">0 örnek</span>
+        </div>
+        <div class="chart" id="rpcChart" aria-label="RPC latency chart"></div>
+        <div class="legend"><span>Son ölçümler</span><span id="rpcLatest">—</span></div>
+      </article>
+    </section>
+
+    <section class="grid two lower">
+      <article class="panel">
+        <div class="panel-head">
+          <div><span class="kicker">DISCOVERY → QUOTE</span><h2>Fırsat zamanlaması</h2></div>
+          <span class="mini" id="timingCount">0 aday</span>
+        </div>
+        <div id="timings" class="timing-list"></div>
+        <div class="empty" id="timingEmpty">Henüz lifecycle ölçümü yok.</div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div><span class="kicker">DATASET</span><h2>Toplanan gözlemler</h2></div>
+        </div>
+        <div class="dataset">
+          <div><span>Launch rows</span><strong id="countLaunches">0</strong></div>
+          <div><span>Market snapshots</span><strong id="countMarkets">0</strong></div>
+          <div><span>Route screens</span><strong id="countScreens">0</strong></div>
+          <div><span>Executable quotes</span><strong id="countQuotes">0</strong></div>
+          <div><span>Lifecycle rows</span><strong id="countLifecycle">0</strong></div>
+          <div><span>RPC samples</span><strong id="countRpc">0</strong></div>
+        </div>
+        <p class="footnote">Dashboard yalnızca yerel SQLite verisini okur. Tarayıcıdan RPC çağrısı, cüzdan bağlantısı veya işlem gönderimi yoktur.</p>
+      </article>
+    </section>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
