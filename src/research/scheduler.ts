@@ -160,3 +160,12 @@ export async function runStagedCandidates<T, R>(
     ? { candidate: ordered[index]!, status:'fulfilled' as const, value:entry.value }
     : { candidate: ordered[index]!, status:'rejected' as const, reason:entry.reason });
 }
+
+
+export function sharedAsyncResource<T>(factory: () => Promise<T>): () => Promise<T> {
+  let shared: Promise<T> | null = null;
+  return () => {
+    shared ??= Promise.resolve().then(factory);
+    return shared;
+  };
+}
