@@ -23,5 +23,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run dashboard:smoke
       - run: npm run replay
       - run: git diff --exit-code -- docs/LONG5_REPLAY.json docs/LONG5_REPLAY.md
