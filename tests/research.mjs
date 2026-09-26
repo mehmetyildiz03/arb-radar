@@ -278,19 +278,23 @@ test('scheduler concurrency configuration is user-settable but safely bounded', 
   const configured=loadConfig({
     PROBE_CONCURRENCY:'3',
     SIZING_CONCURRENCY:'2',
+    SIZING_QUOTE_CONCURRENCY:'2',
     CANDIDATE_MAX_QUEUE_MS:'1750'
   });
   assert.equal(configured.probeConcurrency,3);
   assert.equal(configured.sizingConcurrency,2);
+  assert.equal(configured.sizingQuoteConcurrency,2);
   assert.equal(configured.candidateMaxQueueMs,1750);
 
   const clamped=loadConfig({
     PROBE_CONCURRENCY:'999',
     SIZING_CONCURRENCY:'999',
+    SIZING_QUOTE_CONCURRENCY:'999',
     CANDIDATE_MAX_QUEUE_MS:'10'
   });
   assert.equal(clamped.probeConcurrency,8);
   assert.equal(clamped.sizingConcurrency,4);
+  assert.equal(clamped.sizingQuoteConcurrency,4);
   assert.equal(clamped.candidateMaxQueueMs,100);
 });
 
@@ -339,4 +343,38 @@ test('candidate timing separates queue preparation quote barrier queue and sizin
   assert.equal(result.timing.sizingDurationMs,100);
   assert.equal(result.timing.sizingTotalPhaseMs,140);
   assert.equal(timing.length,1);
+});
+
+
+test('parallel sizing preserves the exact sequential optimizer result', async () => {
+  const quoteFor = async (_route, inputUsd) => ({
+    inputUsd,
+    outputUsd: inputUsd + Math.sin(inputUsd / 7) * 0.4 + inputUsd * 0.02,
+    gasUsd: 0.05,
+    extraCostsUsd: 0.01,
+    safetyMarginUsd: 0.01,
+  });
+  const options={capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,minNetProfitUsd:0};
+  const sequential=await optimizeRoute(route,quoteFor,{...options,quoteConcurrency:1});
+  const parallel=await optimizeRoute(route,quoteFor,{...options,quoteConcurrency:4});
+  assert.deepEqual(parallel,sequential);
+});
+
+test('parallel sizing never exceeds configured quote concurrency', async () => {
+  let active=0,maxActive=0;
+  const q=await optimizeRoute(route,async(_route,inputUsd)=>{
+    active++;maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
+  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:3});
+  assert.ok(q);
+  assert.equal(maxActive,3);
+});
+
+test('parallel sizing remains fail-closed when any quote rejects', async () => {
+  await assert.rejects(()=>optimizeRoute(route,async(_route,inputUsd)=>{
+    if(inputUsd>10&&inputUsd<90)throw Error('rpc failure');
+    return {inputUsd,outputUsd:inputUsd*1.1,gasUsd:0.01};
+  },{capitalUsd:100,maxTradeUsd:100,minTradeUsd:1,steps:8,quoteConcurrency:4}),/rpc failure/);
 });
