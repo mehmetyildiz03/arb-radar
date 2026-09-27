@@ -242,12 +242,15 @@ export async function prepareLaunchEconomicCandidates(
   const baseMetaCache=new Map<string,{decimals:number;usd:number}>();
 
   for(const pair of pairCycles){
-    const truths=pair.cycles.map(cycle=>cycleTruthFromStates(cycle,states,blockNumber));
+    const truths=pair.cycles
+      .map(cycle=>cycleTruthFromStates(cycle,states,blockNumber))
+      .filter(truth=>truth.passesInfinitesimalEdge);
     truths.sort((a,b)=>
+      a.cycle.hopCount-b.cycle.hopCount ||
       b.infinitesimalMultiplier-a.infinitesimalMultiplier ||
-      a.cycle.hopCount-b.cycle.hopCount);
+      a.cycle.base.toLowerCase().localeCompare(b.cycle.base.toLowerCase()));
     const truth=truths[0];
-    if(!truth||!truth.passesInfinitesimalEdge) continue;
+    if(!truth) continue;
 
     const cycle=truth.cycle;
     const baseKey=cycle.base.toLowerCase();
@@ -307,14 +310,17 @@ export async function quotePreparedEconomicCandidate(
   inputUsd:number,
   options:{extraCostsUsd:number;safetyBps:number;gasBufferBps?:number;blockNumber?:bigint},
 ):Promise<EconomicExecutionQuote> {
-  const amountInRaw=inputRawForUsd(inputUsd,prepared.baseUsdPrice,prepared.baseDecimals);
   const quoteBlock=options.blockNumber ?? await client.getBlockNumber({cacheTime:0});
+  const baseUsdPrice=quoteBlock===prepared.truth.blockNumber
+    ? prepared.baseUsdPrice
+    : await baseUsdAtBlock(client,prepared.cycle.base,prepared.baseDecimals,prepared.ethUsdPrice,quoteBlock);
+  const amountInRaw=inputRawForUsd(inputUsd,baseUsdPrice,prepared.baseDecimals);
   const closed=await quoteClosedCycle(client,prepared.cycle,amountInRaw,quoteBlock);
   const gasPriceWei=await client.getGasPrice();
   const gasBufferBps=options.gasBufferBps ?? 2000;
   const gasUnitsResearch=(closed.gasEstimate*BigInt(10_000+gasBufferBps)+9_999n)/10_000n;
   const outputHuman=Number(formatUnits(closed.amountOut,prepared.baseDecimals));
-  const outputUsd=outputHuman*prepared.baseUsdPrice;
+  const outputUsd=outputHuman*baseUsdPrice;
   const gasUsd=Number(formatEther(gasUnitsResearch*gasPriceWei))*prepared.ethUsdPrice;
   const quote:ExecutionQuote={
     inputUsd,
@@ -330,7 +336,7 @@ export async function quotePreparedEconomicCandidate(
     engine:'v0.8-economic-truth',
     truthLevel:'same-block-v4-closed-cycle-quoter',
     verifiedClosedCycle:true,
-    blockNumber:prepared.truth.blockNumber,
+    blockNumber:closed.blockNumber,
     base:prepared.cycle.base,
     baseSymbol:prepared.cycle.baseSymbol,
     baseDecimals:prepared.baseDecimals,
