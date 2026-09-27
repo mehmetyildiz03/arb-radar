@@ -50,8 +50,10 @@ function renderOpportunities(){
     tr.append(cell(dt.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),'muted'));
     tr.append(cell(short(item.token),'token',String(item.token??'')));
     tr.append(cell((item.buyMarket??'?')+' → '+(item.sellMarket??'?'),'route'));
+    tr.append(cell(item.baseSymbol??'—','muted'));
+    tr.append(cell(item.hopCount??'—','muted'));
     tr.append(cell(fmtPct(item.grossSpreadPct)));
-    tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),moneyClass(item.firstProbeNetProfitUsd)));
+    tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),item.verifiedClosedCycle?moneyClass(item.firstProbeNetProfitUsd):'muted'));
     const latest=item.latestNetProfitUsd;
     tr.append(cell(latest===null&&item.status==='unavailable'?'unavailable':fmtMoney(latest),moneyClass(latest),item.reason??''));
     tr.append(cell(fmtMoney(item.bestObservedNetProfitUsd),statusClass(item)));
@@ -95,8 +97,8 @@ function renderSelectedCandidate(){
     renderBreakdown('probe',null);renderBreakdown('best',null);return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
-  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' screening spread · '+(item.quoteCount??0)+' numeric quote · '+ago(item.timestampMs));
-  setText('selectedCandidateStatus',item.status==='positive'?'POZİTİF PAPER':item.status==='unavailable'?'UNAVAILABLE':'NEGATİF PAPER');
+  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' truth spread · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
+  setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
 }
@@ -239,7 +241,7 @@ function renderRunControls(data){
 
 function renderSpotlight(item){
   if(!item){
-    setText('spotlightRoute','Pozitif paper quote bekleniyor');
+    setText('spotlightRoute','Verified pozitif cycle bekleniyor');
     setText('spotlightMeta','Amount-sensitive quote oluştuğunda burada özetlenecek.');
     setText('spotlightNet','—');$('spotlight').classList.remove('has-positive');return;
   }
