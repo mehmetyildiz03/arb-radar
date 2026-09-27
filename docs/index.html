@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Arb Radar · v0.8 Economic Truth</title>
+  <title>Arb Radar · v0.8.2 Economic Truth</title>
   <style>
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#0b0d10;color:#eef2f7}
     body{margin:0}.wrap{max-width:980px;margin:auto;padding:56px 24px}
@@ -19,34 +19,36 @@
 </head>
 <body>
   <main class="wrap">
-    <span class="badge">v0.8 · ECONOMIC TRUTH ENGINE · PAPER ONLY</span>
+    <span class="badge">v0.8.2 · DEPTH-AWARE ECONOMIC TRUTH · PAPER ONLY</span>
     <h1>Arb Radar</h1>
-    <p>Read-only research radar for Par multi-market dislocations on Robinhood Chain. v0.8 evaluates closed cycles from canonical same-block state instead of treating indexer last prices as executable truth.</p>
+    <p>Read-only research radar for Par multi-market dislocations on Robinhood Chain. v0.8.2 separates marginal price truth from finite executable depth and measures exact closed-cycle capacity from one cent upward.</p>
 
     <section class="grid">
-      <article class="card"><strong class="ok">Same-block</strong><span>V4 StateView truth screen</span></article>
-      <article class="card"><strong>Closed cycle</strong><span>same base in and out</span></article>
-      <article class="card"><strong>48 / 48</strong><span>tests green on Node 22 and 24</span></article>
+      <article class="card"><strong class="ok">Same-block</strong><span>canonical V4 StateView truth</span></article>
+      <article class="card"><strong>Depth-aware</strong><span>$0.01 upward exact cycle sizing</span></article>
+      <article class="card"><strong>55+</strong><span>research and regression checks</span></article>
       <article class="card"><strong>Read-only</strong><span>no key, signer or transaction submission</span></article>
     </section>
 
-    <div class="note"><strong>Green means something specific.</strong><br>
-      A candidate can be marked Verified Positive only after a hookless all-V4 closed cycle is amount-quoted by the canonical Robinhood V4Quoter and remains positive after explicit paper costs. A last-price spread, marginal StateView edge or analytical sizing seed cannot make a candidate green by itself.
+    <div class="note"><strong>Green still means exact verified paper net.</strong><br>
+      Marginal spot edge, analytical sizing math, or a shallow price outlier cannot create a green candidate. The cycle must start and finish in the same base asset, receive a canonical exact quote, and remain positive after the unchanged paper cost model.
     </div>
 
-    <h2>v0.8 pipeline</h2>
-    <p>Indexer → typed launch metadata → one canonical screen block → common-base route compression → V4 StateView → fee-aware marginal edge → current-block V4Quoter probe → exact sizing → lifecycle and run-isolated SQLite telemetry.</p>
+    <h2>What v0.8.2 fixed</h2>
+    <p>Live diagnostics showed that many huge marginal edges had almost no finite depth. Canonical V4Quoter frequently returned <code>NotEnoughLiquidity(poolId)</code>. One observed route could quote $0.01 with positive gross edge, but $0.03 and above failed and the $0.01 paper net remained negative after gas, allowance and safety costs.</p>
 
-    <h2>Live integration status</h2>
-    <p>The main-branch live-smoke workflow requires zero truth-scan failures and separately forces one real supported closed cycle through the canonical V4Quoter. The latest recorded integration sample completed a 3-hop ETH cycle at block <code>73861649</code>. Its output was below input, so it was explicitly recorded as <strong>not profitable</strong>. The purpose is integration verification, not a trading claim.</p>
+    <p>The engine now probes from $0.01 and follows an ascending exact-depth ladder. A decoded <code>NotEnoughLiquidity</code> becomes an observed capacity boundary; smaller successful quotes are retained and larger sizes are not attempted. Unknown errors still fail closed.</p>
+
+    <h2>Dashboard</h2>
+    <p>The local dashboard shows exact first-probe depth edge rather than giant marginal percentages as executable spread. Capture Quality also exposes unique depth-rejected candidates and total <code>NotEnoughLiquidity</code> events.</p>
 
     <h2>Measurement boundary</h2>
-    <p>V4Quoter gas is still a research proxy rather than deployed atomic-executor gas. Quote completion is not transaction inclusion. Public RPC latency can dominate short-lived dislocations. Historical LONG5 executable P&amp;L remains unknown without historical canonical state.</p>
+    <p>V4Quoter gas remains a research proxy rather than deployed atomic-executor gas. Quote completion is not transaction inclusion. A positive sample would be paper evidence, not realized profit.</p>
 
-    <h2>Local dashboard</h2>
-    <p>The live dashboard stays local and reads the local SQLite database. After pulling the project, run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. This GitHub Pages page is only a static project-status surface.</p>
+    <h2>Local use</h2>
+    <p>Run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. This GitHub Pages page is only a static project-status surface.</p>
 
-    <p><a href="V0.8_AUDIT.md">v0.8 audit</a> · <a href="ARCHITECTURE.md">architecture</a> · <a href="LONG5_REPLAY.md">LONG5 replay</a></p>
+    <p><a href="V0.8.2_AUDIT.md">v0.8.2 depth audit</a> · <a href="ARCHITECTURE.md">architecture</a> · <a href="V0.8_AUDIT.md">v0.8 audit</a> · <a href="LONG5_REPLAY.md">LONG5 replay</a></p>
   </main>
 </body>
 </html>
