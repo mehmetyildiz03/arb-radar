@@ -293,7 +293,6 @@ export async function readCycleTruth(
   blockNumber?: bigint,
 ): Promise<CycleTruth> {
   if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
-  if(cycle.referenceToBase.some(h=>h.v3)) throw new Error('Same-block base valuation contains v3');
   const block=blockNumber ?? await client.getBlockNumber({cacheTime:0});
   const states=await readV4States(client,[cycle],block);
   return cycleTruthFromStates(cycle,states,block);
