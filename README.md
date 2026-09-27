@@ -1,4 +1,4 @@
-# Arb Radar v0.8 — Economic Truth Engine
+# Arb Radar v0.8.1 — Economic Truth Engine
 
 Paper-only research radar for Par multi-market dislocations on Robinhood Chain. The application has no wallet, private key, signer, transaction submission, or automated trading path.
 
@@ -67,11 +67,11 @@ The structural selector prefers an all-V4 cycle and then fewer hops. Verified qu
 
 Screening state comes from canonical V4 StateView reads at one block. For each V4 pool the engine reads slot0 and active liquidity and applies Uniswap v4's directional protocol-fee + LP-fee composition. The indexer's `lastPriceEth` is not used to decide whether a v0.8 opportunity is executable.
 
-The screen is infinitesimal/marginal only. It is a cheap onchain filter, not a profit quote.
+The screen is infinitesimal/marginal only. It is a cheap onchain filter, not a profit quote. v0.8.1 also requires every hop to have non-zero active V4 liquidity before a marginal edge can enter the candidate queue.
 
 ### Exact amount-sensitive quote
 
-The first executable probe uses the deployed Robinhood V4Quoter as one multi-hop closed-cycle quote. The quote starts and ends in the same raw base asset, so no nominal cross-asset comparison is treated as profit.
+The first executable probe uses the deployed Robinhood V4Quoter as one multi-hop closed-cycle quote. v0.8.1 lowers the exact first-probe/minimum sizing notional from $1 to $0.10 so shallow sub-$1 opportunities are not skipped. The quote starts and ends in the same raw base asset, so no nominal cross-asset comparison is treated as profit.
 
 Screen block and quote block are intentionally different concepts:
 - the screen records when an edge was observed;
@@ -84,7 +84,7 @@ This prevents a stale profitable screen from being presented as a current execut
 
 When both Par pools still have active liquidity exactly equal to Par's locked liquidity and the indexer supplied valid `phantomQuote`, `quoteRaised` and `tokensOnCurve` metadata, a two-pool constant-product closed form proposes a size. That analytical result is **only a seed**. The engine exact-quotes 75%, 100% and 125% around it.
 
-If those strict assumptions do not hold, or the seeded quotes do not produce an accepted result, the engine falls back to the existing deterministic eight-size exact quote grid. Analytical math never creates a green result by itself.
+If those strict assumptions do not hold, or the seeded quotes do not produce an accepted result, the engine falls back to the existing deterministic eight-size exact quote grid beginning at `MIN_CANDIDATE_TRADE_USD` (default $0.10). If the exact first probe already has gross output <= input, sizing is skipped because a larger no-hook V4 trade cannot improve average execution on the same directed cycle. Analytical math never creates a green result by itself.
 
 ## Paper cost model
 
@@ -116,7 +116,7 @@ The v0.8 funnel is:
 The table also exposes:
 - base asset,
 - hop count,
-- truth spread,
+- exact first-probe depth edge (marginal spot outliers are not presented as executable spread),
 - first probe,
 - latest/best paper net,
 - block,
@@ -135,6 +135,7 @@ The table also exposes:
 | `POLL_MS` | 1000 | Delay between completed watch scans |
 | `PAPER_CAPITAL_USD` | 100 | Total paper budget |
 | `MAX_CANDIDATE_TRADE_USD` | 100 | Maximum quote input |
+| `MIN_CANDIDATE_TRADE_USD` | 0.10 | Exact first-probe and fallback-grid minimum |
 | `MIN_NET_PROFIT_USD` | 0.05 | Accepted paper-net threshold |
 | `PROBE_CONCURRENCY` | 2 | Parallel first-probe phases, max 8 |
 | `SIZING_CONCURRENCY` | 1 | Parallel candidate sizing phases, max 4 |
