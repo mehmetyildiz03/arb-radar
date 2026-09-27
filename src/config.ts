@@ -11,6 +11,7 @@ export interface RadarConfig {
   sizingConcurrency: number;
   sizingQuoteConcurrency: number;
   candidateMaxQueueMs: number;
+  truthLaunchLimit: number;
 }
 
 function positiveNumber(value: string | undefined, fallback: number): number {
@@ -34,5 +35,6 @@ export function loadConfig(env = process.env): RadarConfig {
     sizingConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_CONCURRENCY, 1)))),
     sizingQuoteConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_QUOTE_CONCURRENCY, 2)))),
     candidateMaxQueueMs: Math.min(30_000, Math.max(100, positiveNumber(env.CANDIDATE_MAX_QUEUE_MS, 2500))),
+    truthLaunchLimit: Math.min(30, Math.max(1, Math.floor(positiveNumber(env.TRUTH_LAUNCH_LIMIT, 8)))),
   };
 }
