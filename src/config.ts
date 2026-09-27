@@ -12,6 +12,8 @@ export interface RadarConfig {
   candidateMaxQueueMs: number;
   truthLaunchLimit: number;
   truthScanConcurrency: number;
+  screenProbeUsd: number;
+  minCandidateTradeUsd: number;
 }
 
 function positiveNumber(value: string | undefined, fallback: number): number {
@@ -36,5 +38,7 @@ export function loadConfig(env = process.env): RadarConfig {
     candidateMaxQueueMs: Math.min(30_000, Math.max(100, positiveNumber(env.CANDIDATE_MAX_QUEUE_MS, 2500))),
     truthLaunchLimit: Math.min(30, Math.max(1, Math.floor(positiveNumber(env.TRUTH_LAUNCH_LIMIT, 8)))),
     truthScanConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.TRUTH_SCAN_CONCURRENCY, 2)))),
+    screenProbeUsd: Math.min(1, positiveNumber(env.SCREEN_PROBE_USD, 0.01)),
+    minCandidateTradeUsd: Math.min(10, positiveNumber(env.MIN_CANDIDATE_TRADE_USD, 0.01)),
   };
 }
