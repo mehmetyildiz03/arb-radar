@@ -3,7 +3,6 @@ import { createPublicClient, http } from 'viem';
 import { loadConfig } from './config.js';
 import { Discovery } from './adapters/discovery.js';
 import { resilientFetch, sleep } from './adapters/network.js';
-import { optimizeRoute } from './arbitrage/optimizer.js';
 import { ResearchStore, json } from './research/store.js';
 import { monotonicClock, summarizeLifecycle } from './research/lifecycle.js';
 import { measureCandidate } from './research/measurement.js';
@@ -19,6 +18,8 @@ import {
   type EconomicExecutionQuote,
   type PreparedEconomicCandidate,
 } from './economic/engine.js';
+import { runDepthAwareSizing } from './economic/depth.js';
+import { classifyV4QuoteError } from './economic/v4Truth.js';
 import type { OptimizedOpportunity } from './domain.js';
 
 const config = loadConfig();
@@ -232,51 +233,69 @@ async function tick(): Promise<void> {
         withSizingPhase:controls.withSizingPhase,
         prepare:async()=>prepared,
         quote:async context=>{
-          const quote=await quotePreparedEconomicCandidate(client,context,trackedInput,{
-            extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,
-          });
-          persistQuote(quote,'probe-or-lifecycle');
-          return quote;
+          try{
+            const quote=await quotePreparedEconomicCandidate(client,context,trackedInput,{
+              extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,
+            });
+            persistQuote(quote,'probe-or-lifecycle');
+            return quote;
+          }catch(error){
+            const failure=classifyV4QuoteError(error);
+            store.record('opportunity_lifecycle',key,withRun(run,{
+              depthFailure:{phase:'probe-or-lifecycle',inputUsd:trackedInput,...failure},
+              verifiedClosedCycle:true,
+              engine:'v0.8-economic-truth',
+            }),{timestampMs:Date.now(),blockNumber:null,source:'uniswap:v4-quoter'});
+            throw error;
+          }
         },
         size:async context=>{
           const sizingBlock=await client.getBlockNumber({cacheTime:0});
-          const completed:EconomicExecutionQuote[]=[];
-          let sizingMode:'analytic-seed-exact'|'exact-grid-fallback'='exact-grid-fallback';
-
-          if(context.seedTrusted&&context.sizingAmountsUsd.length){
-            const seeded=await mapBounded(
-              context.sizingAmountsUsd,
-              Math.min(config.sizingQuoteConcurrency,context.sizingAmountsUsd.length),
-              amount=>quotePreparedEconomicCandidate(client,context,amount,{
-                extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:sizingBlock,
-              }),
-            );
-            completed.push(...seeded);
-            for(const quote of seeded) persistQuote(quote,'sizing-seed');
-            const bestSeed=[...seeded].sort((a,b)=>b.costBreakdown.netProfitUsd-a.costBreakdown.netProfitUsd)[0];
-            if(bestSeed && optimizedFromQuote(context,bestSeed)){
-              sizingMode='analytic-seed-exact';
-              return {...optimizedFromQuote(context,bestSeed)!,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock};
-            }
-          }
-
-          const gridQuotes:EconomicExecutionQuote[]=[];
-          const bestGrid=await optimizeRoute(context.route,async(_route,amount)=>{
-            const quote=await quotePreparedEconomicCandidate(client,context,amount,{
+          const maxUsd=Math.min(config.paperCapitalUsd,config.maxCandidateTradeUsd);
+          const depth=await runDepthAwareSizing({
+            minUsd:config.minCandidateTradeUsd,
+            maxUsd,
+            extraAmountsUsd:context.seedTrusted?context.sizingAmountsUsd:[],
+            quote:amount=>quotePreparedEconomicCandidate(client,context,amount,{
               extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:sizingBlock,
-            });
-            gridQuotes.push(quote);
-            return quote;
-          },{
-            capitalUsd:config.paperCapitalUsd,
-            maxTradeUsd:config.maxCandidateTradeUsd,
-            minTradeUsd:config.minCandidateTradeUsd,
-            steps:8,
-            minNetProfitUsd:config.minNetProfitUsd,
-            quoteConcurrency:config.sizingQuoteConcurrency,
+            }),
+            score:quote=>quote.costBreakdown.netProfitUsd,
+            grossPositive:quote=>quote.outputUsd>quote.inputUsd,
+            classifyFailure:classifyV4QuoteError,
+            onQuote:quote=>persistQuote(quote,'sizing-depth'),
+            onFailure:failure=>store.record('opportunity_lifecycle',key,withRun(run,{
+              depthFailure:{
+                phase:'sizing-depth',
+                inputUsd:failure.inputUsd,
+                ...failure.failure,
+              },
+              verifiedClosedCycle:true,
+              engine:'v0.8-economic-truth',
+            }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'uniswap:v4-quoter'}),
           });
-          for(const quote of gridQuotes.sort((a,b)=>a.inputUsd-b.inputUsd)) persistQuote(quote,'sizing-grid');
-          return bestGrid?{...bestGrid,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock}:null;
+          const bestQuote=depth.bestQuote;
+          const optimized=bestQuote?optimizedFromQuote(context,bestQuote):null;
+          store.record('opportunity_lifecycle',key,withRun(run,{
+            depthSizing:{
+              minUsd:config.minCandidateTradeUsd,
+              maxUsd,
+              successfulQuotes:depth.quotes.length,
+              failures:depth.failures.length,
+              firstLiquidityFailureUsd:depth.firstLiquidityFailureUsd,
+              stoppedReason:depth.stoppedReason,
+              bestInputUsd:bestQuote?.inputUsd??null,
+              bestNetProfitUsd:bestQuote?.costBreakdown.netProfitUsd??null,
+            },
+            verifiedClosedCycle:true,
+            engine:'v0.8-economic-truth',
+          }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:economic-truth'});
+          return optimized?{
+            ...optimized,
+            sizingMode:'depth-aware-exact',
+            screenBlock:context.truth.blockNumber,
+            quoteBlock:sizingBlock,
+            firstLiquidityFailureUsd:depth.firstLiquidityFailureUsd,
+          }:null;
         },
         profit:q=>q.costBreakdown.netProfitUsd,
         shouldSize:q=>q.outputUsd>q.inputUsd,
@@ -295,7 +314,7 @@ async function tick(): Promise<void> {
       }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:economic-truth'});
 
       const initial=samples[0];
-      const positive=!!(initial.quote && initial.netProfitUsd!==null &&
+      const positive=!!best || !!(initial.quote && initial.netProfitUsd!==null &&
         initial.netProfitUsd>=config.minNetProfitUsd && initial.quote.green===true);
       console.log(json({
         paperOnly:true,verifiedClosedCycle:true,key,best,summary,timing,
