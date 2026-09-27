@@ -45,3 +45,7 @@ jobs:
             echo "truth scan failure detected"
             exit 1
           fi
+      - name: Quote one real hookless all-V4 closed cycle
+        env:
+          TRUTH_LAUNCH_LIMIT: 12
+        run: node scripts/v08-live-cycle-smoke.mjs
