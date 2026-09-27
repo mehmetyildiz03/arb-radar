@@ -13,6 +13,8 @@ export interface CaptureTiming {
   sizingStartedMs: number | null;
   sizingCompletedMs: number | null;
   postSizingLifecycleStartedMs: number | null;
+  sizingSkipped: boolean;
+  sizingSkipReason: string | null;
 }
 export function timingReport(t: CaptureTiming) {
   return {
@@ -43,6 +45,8 @@ export async function measureCandidate<C, Q, B>(options: {
   withProbePhase?: <T>(work: () => Promise<T>) => Promise<T>;
   beforeSizing?: () => Promise<void>;
   withSizingPhase?: <T>(work: () => Promise<T>) => Promise<T>;
+  shouldSize?: (quote: Q) => boolean;
+  sizingSkipReason?: string;
 }, clock = monotonicClock) {
   const timing: CaptureTiming = {
     discoveredAtMs: options.discoveredAtMs,
@@ -57,6 +61,8 @@ export async function measureCandidate<C, Q, B>(options: {
     sizingStartedMs: null,
     sizingCompletedMs: null,
     postSizingLifecycleStartedMs: null,
+    sizingSkipped: false,
+    sizingSkipReason: null,
   };
   try {
     const probePhase = async () => {
@@ -86,6 +92,13 @@ export async function measureCandidate<C, Q, B>(options: {
 
     if (first[0].error) {
       timing.firstExecutableQuoteSucceeded = false;
+      return { best: null, samples: first, timing: timingReport(timing) };
+    }
+
+    const firstQuote=first[0].quote;
+    if (options.shouldSize && firstQuote !== undefined && !options.shouldSize(firstQuote)) {
+      timing.sizingSkipped = true;
+      timing.sizingSkipReason = options.sizingSkipReason ?? 'first-probe-did-not-qualify';
       return { best: null, samples: first, timing: timingReport(timing) };
     }
 
