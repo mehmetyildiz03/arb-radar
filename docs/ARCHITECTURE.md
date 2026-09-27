@@ -1,4 +1,4 @@
-# Arb Radar architecture — v0.8 Economic Truth Engine
+# Arb Radar architecture — v0.8.2 Economic Truth Engine
 
 ## Objective
 
@@ -55,18 +55,21 @@ A qualifying same-block screen enters the staged scheduler. Immediately before t
 
 This deliberately avoids quoting the historical screen block: the first probe asks whether the opportunity still exists when measurement reaches it.
 
-### 7. Sizing
+### 7. Executable depth and sizing
 
-`economic/seed.ts` contains a two-pool constant-product analytical optimum.
+The first exact probe begins at `MIN_CANDIDATE_TRADE_USD` (default $0.01). Sizing then runs an ascending USD depth ladder on one fixed block:
 
-It is used only when:
-- both Par pool active-liquidities equal the locked Par liquidities exactly,
-- required curve metadata exists,
-- all conversion path rates needed by the seed are available from the same-block V4 states.
+`0.01 -> 0.03 -> 0.10 -> 0.30 -> 1 -> 3 -> 10 -> 30 -> 100`
 
-The seed generates three exact validation sizes around 75/100/125%. If the assumptions fail or the seeded exact quotes do not produce an accepted result, the engine uses the legacy deterministic eight-size exact quote grid.
+The list is clipped to the configured minimum, paper capital and max-trade bound.
 
-The analytical result never supplies P&L by itself.
+`economic/depth.ts` treats canonical V4Quoter `NotEnoughLiquidity(poolId)` as an observed capacity boundary, not as an RPC failure. That failure is recorded with notional and pool id, and larger sizes are not attempted. Unknown/revert/RPC errors still fail closed.
+
+If an exact quote succeeds but gross output is already <= input, sizing stops because increasing a hookless V4 exact-input trade cannot improve the average execution price of the same directed path.
+
+`economic/seed.ts` still contains the two-pool constant-product analytical optimum. It is only a seed under strict Par liquidity/curve assumptions. Seed points are quoted only when they lie below the observed liquidity boundary; they never establish profitability without an exact quote.
+
+This makes successful shallow quotes durable research evidence even when the next larger notional is impossible.
 
 ### 8. Cost model
 
@@ -105,7 +108,7 @@ SQLite schema version 4 includes:
 - radar_runtime
 - radar_runs
 
-v0.8 observations carry run identity in payloads. Existing databases remain append-only/create-if-missing.
+v0.8.2 observations carry run identity in payloads. Existing databases remain append-only/create-if-missing.
 
 ### 11. Dashboard
 

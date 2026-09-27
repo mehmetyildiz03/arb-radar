@@ -23,7 +23,66 @@ export const stateViewAbi = parseAbi([
 
 export const v4QuoterAbi = parseAbi([
   'function quoteExactInput((address exactCurrency,(address intermediateCurrency,uint24 fee,int24 tickSpacing,address hooks,bytes hookData)[] path,uint128 exactAmount) params) returns (uint256 amountOut,uint256 gasEstimate)',
+  'error UnexpectedRevertBytes(bytes revertData)',
+  'error NotEnoughLiquidity(bytes32 poolId)',
+  'error UnexpectedCallSuccess()',
+  'error NotSelf()',
+  'error NotPoolManager()',
 ]);
+
+export interface V4QuoteErrorInfo {
+  kind: 'not-enough-liquidity' | 'unexpected-revert' | 'other';
+  outerError: string | null;
+  innerSelector: string | null;
+  poolId: Hex | null;
+  message: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+export function classifyV4QuoteError(error: unknown): V4QuoteErrorInfo {
+  let current: unknown = error;
+  let outerError: string | null = null;
+  let nested: string | null = null;
+
+  for (let depth = 0; depth < 16 && current; depth++) {
+    const record = asRecord(current);
+    if (!record) break;
+    const data = asRecord(record.data);
+    if (data) {
+      if (typeof data.errorName === 'string') outerError ??= data.errorName;
+      if (data.errorName === 'UnexpectedRevertBytes' && Array.isArray(data.args) && typeof data.args[0] === 'string') {
+        nested = data.args[0];
+        break;
+      }
+    }
+    current = record.cause;
+  }
+
+  const innerSelector = nested?.startsWith('0x') && nested.length >= 10 ? nested.slice(0,10) : null;
+  if (innerSelector === '0x7a5ed734') {
+    const poolId = nested && nested.length >= 74 ? ('0x'+nested.slice(10,74)) as Hex : null;
+    return {
+      kind:'not-enough-liquidity',
+      outerError:outerError ?? 'UnexpectedRevertBytes',
+      innerSelector,
+      poolId,
+      message:String(error),
+    };
+  }
+  if (nested) {
+    return {
+      kind:'unexpected-revert',
+      outerError:outerError ?? 'UnexpectedRevertBytes',
+      innerSelector,
+      poolId:null,
+      message:String(error),
+    };
+  }
+  return {kind:'other',outerError,innerSelector:null,poolId:null,message:String(error)};
+}
 
 export interface DirectedPoolHop {
   input: Address;

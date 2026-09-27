@@ -24,6 +24,8 @@ import {
   directionalProtocolFee, cycleSpotMultiplier, cycleTruthFromStates, readCycleTruth, quoteClosedCycle
 } from '../dist/economic/v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
+import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js';
+import { classifyV4QuoteError } from '../dist/economic/v4Truth.js';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -655,4 +657,77 @@ test('same-block marginal truth rejects a cycle when any active V4 hop has zero 
   const truth=cycleTruthFromStates(cycle,states,50n);
   assert.equal(truth.activeLiquidityReady,false);
   assert.equal(truth.passesInfinitesimalEdge,false);
+});
+
+
+test('depth ladder covers cent-scale sizes monotonically through the max', () => {
+  assert.deepEqual(buildDepthLadder(.01,100),[.01,.03,.1,.3,1,3,10,30,100]);
+  assert.deepEqual(buildDepthLadder(.1,1),[.1,.3,1]);
+  assert.deepEqual(buildDepthLadder(1,1),[1]);
+});
+
+test('depth-aware sizing stops at first NotEnoughLiquidity and preserves smaller exact quote', async () => {
+  const calls=[];
+  const result=await runDepthAwareSizing({
+    minUsd:.01,maxUsd:100,
+    quote:async amount=>{
+      calls.push(amount);
+      if(amount>=.03) throw {data:{errorName:'UnexpectedRevertBytes',args:['0x7a5ed734'+'11'.repeat(32)]}};
+      return {inputUsd:amount,outputUsd:amount*1.5,net:amount*.5};
+    },
+    score:q=>q.net,
+    grossPositive:q=>q.outputUsd>q.inputUsd,
+    classifyFailure:classifyV4QuoteError,
+  });
+  assert.deepEqual(calls,[.01,.03]);
+  assert.equal(result.quotes.length,1);
+  assert.equal(result.bestQuote.inputUsd,.01);
+  assert.equal(result.firstLiquidityFailureUsd,.03);
+  assert.equal(result.stoppedReason,'liquidity-boundary');
+  assert.equal(result.failures[0].failure.kind,'not-enough-liquidity');
+});
+
+test('depth-aware sizing fails closed on unknown quote errors', async () => {
+  await assert.rejects(()=>runDepthAwareSizing({
+    minUsd:.01,maxUsd:1,
+    quote:async()=>{throw Error('rpc corrupted')},
+    score:()=>0,
+    grossPositive:()=>true,
+    classifyFailure:classifyV4QuoteError,
+  }),/rpc corrupted/);
+});
+
+test('depth-aware sizing stops larger probes and seed extras when exact gross edge is nonpositive', async () => {
+  const calls=[];
+  const result=await runDepthAwareSizing({
+    minUsd:.01,maxUsd:100,
+    extraAmountsUsd:[.02,.05,5],
+    quote:async amount=>{calls.push(amount);return {inputUsd:amount,outputUsd:amount*.99,net:-1}},
+    score:q=>q.net,
+    grossPositive:q=>q.outputUsd>q.inputUsd,
+    classifyFailure:classifyV4QuoteError,
+  });
+  assert.deepEqual(calls,[.01]);
+  assert.equal(result.stoppedReason,'gross-nonpositive');
+});
+
+
+test('depth-aware sizing preserves the first liquidity boundary after a smaller seed refinement succeeds', async () => {
+  const calls=[];
+  const result=await runDepthAwareSizing({
+    minUsd:.01,maxUsd:1,
+    extraAmountsUsd:[.075],
+    quote:async amount=>{
+      calls.push(amount);
+      if(amount>=.1) throw {data:{errorName:'UnexpectedRevertBytes',args:['0x7a5ed734'+'22'.repeat(32)]}};
+      return {inputUsd:amount,outputUsd:amount*1.2,net:amount*.2};
+    },
+    score:q=>q.net,
+    grossPositive:q=>q.outputUsd>q.inputUsd,
+    classifyFailure:classifyV4QuoteError,
+  });
+  assert.deepEqual(calls,[.01,.03,.1,.075]);
+  assert.equal(result.firstLiquidityFailureUsd,.1);
+  assert.equal(result.stoppedReason,'liquidity-boundary');
+  assert.equal(result.bestQuote.inputUsd,.075);
 });
