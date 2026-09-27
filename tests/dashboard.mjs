@@ -174,3 +174,72 @@ test('dashboard clamps analysis window to a safe local range', () => {
     assert.equal(buildDashboardSnapshot(missing,100,100_000,9_999_999).window.durationMs,900_000);
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
+
+
+test('dashboard current-run mode isolates metrics across runs and exact funnel ignores row cap', () => {
+  const dir=mkdtempSync(join(tmpdir(),'arb-radar-run-isolation-'));
+  const dbPath=join(dir,'radar.sqlite');
+  const store=new ResearchStore(dbPath);
+  const now=1_900_000_000_000;
+  const oldRun={runId:'run-old',engineVersion:'0.7.0',runStartedAtMs:now-30_000};
+  const newRun={runId:'run-new',engineVersion:'0.8.0-economic-truth',runStartedAtMs:now-10_000};
+  try {
+    store.record('radar_runs',oldRun.runId,oldRun,{timestampMs:oldRun.runStartedAtMs,blockNumber:null,source:'fixture'});
+    store.record('radar_runs',newRun.runId,newRun,{timestampMs:newRun.runStartedAtMs,blockNumber:null,source:'fixture'});
+
+    for(let i=0;i<5105;i++){
+      store.record('route_screens',`new:${i}`,{
+        ...newRun,discoveredAtMs:now-5000+i%1000,
+        route:{token:'0xnew'},screen:{passesFeeFloor:true,grossSpreadPct:7}
+      },{timestampMs:now-5000+i%1000,blockNumber:null,source:'fixture'});
+    }
+    for(let i=0;i<10;i++){
+      store.record('route_screens',`old:${i}`,{
+        ...oldRun,discoveredAtMs:now-4000,
+        route:{token:'0xold'},screen:{passesFeeFloor:true,grossSpreadPct:99}
+      },{timestampMs:now-4000,blockNumber:null,source:'fixture'});
+      store.record('executable_quotes',`old:${i}`,{
+        ...oldRun,discoveredAtMs:now-4000,route:{token:'0xold'},screen:{grossSpreadPct:99},
+        quote:{inputUsd:1,outputUsd:2,gasUsd:0},netProfitUsd:1
+      },{timestampMs:now-3000,blockNumber:1n,source:'fixture'});
+    }
+    store.record('executable_quotes','new:1',{
+      ...newRun,discoveredAtMs:now-5000,route:{token:'0xnew'},screen:{grossSpreadPct:7},
+      quote:{inputUsd:1,outputUsd:.9,gasUsd:0},netProfitUsd:-.1
+    },{timestampMs:now-2000,blockNumber:2n,source:'fixture'});
+    store.record('opportunity_lifecycle','new:1',{
+      ...newRun,measurementTiming:{discoveredAtMs:now-5000,discoveryToFirstQuoteCompletedMs:100,firstQuoteDurationMs:80,sizingDurationMs:200}
+    },{timestampMs:now-1900,blockNumber:null,source:'fixture'});
+    store.record('opportunity_lifecycle','old:1',{
+      ...oldRun,measurementTiming:{discoveredAtMs:now-4000,discoveryToFirstQuoteCompletedMs:9999,firstQuoteDurationMs:9999,sizingDurationMs:9999}
+    },{timestampMs:now-1800,blockNumber:null,source:'fixture'});
+    store.record('rpc_latency_samples','eth_call',{...newRun,durationMs:20,status:'200'},{timestampMs:now-1700,blockNumber:null,source:'fixture'});
+    store.record('rpc_latency_samples','eth_call',{...oldRun,durationMs:9999,status:'200'},{timestampMs:now-1600,blockNumber:null,source:'fixture'});
+    store.record('radar_runtime','tick-new',{...newRun,durationMs:300,scheduler:{queued:1,droppedStale:0,probesStarted:1,probesCompleted:1,sizingStarted:1,sizingCompleted:1,maxActiveProbes:1,maxActiveSizing:1}},
+      {timestampMs:now-1000,blockNumber:null,source:'fixture'});
+    store.record('radar_runtime','tick-old',{...oldRun,durationMs:9000,scheduler:{queued:10,droppedStale:0,probesStarted:10,probesCompleted:10,sizingStarted:10,sizingCompleted:10,maxActiveProbes:1,maxActiveSizing:1}},
+      {timestampMs:now-2000,blockNumber:null,source:'fixture'});
+    store.close();
+
+    const current=buildDashboardSnapshot(dbPath,500,now,60_000,'current');
+    assert.equal(current.run.selectedRunId,'run-new');
+    assert.equal(current.run.engineVersion,'0.8.0-economic-truth');
+    assert.equal(current.radar.qualifyingScreens,5105);
+    assert.equal(current.radar.quoteBackedCandidates,1);
+    assert.equal(current.radar.positiveExecutableQuotes,0);
+    assert.equal(current.radar.medianRpcLatencyMs,20);
+    assert.equal(current.radar.medianFirstQuoteMs,100);
+    assert.equal(current.radar.medianSizingMs,200);
+    assert.equal(current.runComparison.current.lastTickDurationMs,300);
+    assert.equal(current.runComparison.previous.lastTickDurationMs,9000);
+
+    const old=buildDashboardSnapshot(dbPath,500,now,60_000,'run-old');
+    assert.equal(old.radar.qualifyingScreens,10);
+    assert.equal(old.radar.quoteBackedCandidates,10);
+    assert.equal(old.radar.positiveExecutableQuotes,10);
+    assert.equal(old.radar.medianRpcLatencyMs,9999);
+  } finally {
+    try { store.close(); } catch {}
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
