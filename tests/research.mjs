@@ -21,7 +21,7 @@ import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 import { loadConfig } from '../dist/config.js';
 import {
   enumerateClosedCycles, bestStructuralCycle, totalSwapFeePips,
-  directionalProtocolFee, cycleSpotMultiplier, readCycleTruth, quoteClosedCycle
+  directionalProtocolFee, cycleSpotMultiplier, cycleTruthFromStates, readCycleTruth, quoteClosedCycle
 } from '../dist/economic/v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
 
@@ -284,22 +284,28 @@ test('scheduler concurrency configuration is user-settable but safely bounded', 
     PROBE_CONCURRENCY:'3',
     SIZING_CONCURRENCY:'2',
     SIZING_QUOTE_CONCURRENCY:'2',
+    MIN_CANDIDATE_TRADE_USD:'0.25',
     CANDIDATE_MAX_QUEUE_MS:'1750'
   });
   assert.equal(configured.probeConcurrency,3);
   assert.equal(configured.sizingConcurrency,2);
   assert.equal(configured.sizingQuoteConcurrency,2);
+  assert.equal(configured.minCandidateTradeUsd,0.25);
   assert.equal(configured.candidateMaxQueueMs,1750);
 
   const clamped=loadConfig({
     PROBE_CONCURRENCY:'999',
     SIZING_CONCURRENCY:'999',
     SIZING_QUOTE_CONCURRENCY:'999',
+    MIN_CANDIDATE_TRADE_USD:'999',
+    MAX_CANDIDATE_TRADE_USD:'5',
+    PAPER_CAPITAL_USD:'3',
     CANDIDATE_MAX_QUEUE_MS:'10'
   });
   assert.equal(clamped.probeConcurrency,8);
   assert.equal(clamped.sizingConcurrency,4);
   assert.equal(clamped.sizingQuoteConcurrency,4);
+  assert.equal(clamped.minCandidateTradeUsd,3);
   assert.equal(clamped.candidateMaxQueueMs,100);
 });
 
@@ -570,4 +576,83 @@ test('economic truth uses WETH as the real quoter base when Par route starts fro
   assert.equal(best.hopCount,4);
   assert.equal(best.hops[0].input.toLowerCase(),weth.toLowerCase());
   assert.equal(best.hops.at(-1).output.toLowerCase(),weth.toLowerCase());
+});
+
+
+test('gross-negative exact probe skips expensive sizing and later lifecycle requotes', async () => {
+  let now=100;
+  let sizingCalls=0;
+  let quoteCalls=0;
+  const timings=[];
+  const result=await measureCandidate({
+    discoveredAtMs:0,
+    prepare:async()=>null,
+    quote:async()=>{quoteCalls++;now+=10;return {inputUsd:.1,outputUsd:.09}},
+    size:async()=>{sizingCalls++;return 'should-not-run'},
+    profit:q=>q.outputUsd-q.inputUsd,
+    shouldSize:q=>q.outputUsd>q.inputUsd,
+    sizingSkipReason:'exact-depth-probe-gross-nonpositive',
+    recordSample:()=>{},
+    recordTiming:t=>timings.push(t),
+  },{now:()=>now,sleep:async ms=>{now+=ms}});
+  assert.equal(sizingCalls,0);
+  assert.equal(quoteCalls,1);
+  assert.equal(result.best,null);
+  assert.equal(result.samples.length,1);
+  assert.equal(result.timing.sizingSkipped,true);
+  assert.equal(result.timing.sizingSkipReason,'exact-depth-probe-gross-nonpositive');
+  assert.equal(result.timing.sizingStartedMs,null);
+  assert.equal(timings.length,1);
+});
+
+test('gross-positive exact probe still proceeds to sizing', async () => {
+  let now=100;
+  let sizingCalls=0;
+  const result=await measureCandidate({
+    discoveredAtMs:0,
+    prepare:async()=>null,
+    quote:async()=>{now+=10;return {inputUsd:.1,outputUsd:.11}},
+    size:async()=>{sizingCalls++;now+=5;return 'best'},
+    profit:q=>q.outputUsd-q.inputUsd,
+    shouldSize:q=>q.outputUsd>q.inputUsd,
+    recordSample:()=>{},
+    recordTiming:()=>{},
+  },{now:()=>now,sleep:async ms=>{now+=ms}});
+  assert.equal(sizingCalls,1);
+  assert.equal(result.best,'best');
+  assert.equal(result.timing.sizingSkipped,false);
+});
+
+
+test('same-block marginal truth rejects a cycle when any active V4 hop has zero liquidity', () => {
+  const qa='0x5555555555555555555555555555555555555555';
+  const qb='0x6666666666666666666666666666666666666666';
+  const parA=poolKeyFor(token,qa,0,10);
+  const parB=poolKeyFor(token,qb,0,10);
+  const refA=poolKeyFor(qa,zeroAddress,0,10);
+  const refB=poolKeyFor(qb,zeroAddress,0,10);
+  const meta={
+    token,kind:'multi',router,factory:router,locker:router,deployer:router,creatorFeeRecipient:router,
+    poolFee:0,tickSpacing:10,baseFeeBps:0,creatorTaxBps:0,protocolFeeShareBps:0,launchedAt:1,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,poolKey:parA,poolId:poolIdOf(parA),tokenIsCurrency0:parA.currency0===token,positionId:1n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,poolKey:parB,poolId:poolIdOf(parB),tokenIsCurrency0:parB.currency0===token,positionId:2n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+    ],
+    routes:[
+      {buyHops:[{key:refA,v3:false}],sellHops:[{key:refA,v3:false}],qualifies:true},
+      {buyHops:[{key:refB,v3:false}],sellHops:[{key:refB,v3:false}],qualifies:true},
+    ],
+  };
+  const cycle=bestStructuralCycle(enumerateClosedCycles(meta,0,1));
+  assert.ok(cycle);
+  const Q96=2n**96n;
+  const states={};
+  for(const hop of cycle.hops){
+    const id=poolIdOf(hop.key).toLowerCase();
+    states[id]={poolId:poolIdOf(hop.key),sqrtPriceX96:Q96,tick:0,protocolFee:0,lpFee:0,liquidity:1000n};
+  }
+  states[poolIdOf(cycle.hops[0].key).toLowerCase()]={...states[poolIdOf(cycle.hops[0].key).toLowerCase()],liquidity:0n};
+  const truth=cycleTruthFromStates(cycle,states,50n);
+  assert.equal(truth.activeLiquidityReady,false);
+  assert.equal(truth.passesInfinitesimalEdge,false);
 });

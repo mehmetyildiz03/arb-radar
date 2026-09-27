@@ -6,7 +6,7 @@ export interface RunContext {
   runStartedAtMs: number;
 }
 
-export function createRunContext(engineVersion = '0.8.0-economic-truth', now = Date.now): RunContext {
+export function createRunContext(engineVersion = '0.8.1-economic-truth-depth-gate', now = Date.now): RunContext {
   return {
     runId: randomUUID(),
     engineVersion,

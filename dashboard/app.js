@@ -6,6 +6,16 @@ const ago=ms=>{if(!ms)return 'henüz gözlem yok';const s=Math.max(0,Math.round(
 const short=v=>typeof v==='string'&&v.length>18?v.slice(0,8)+'…'+v.slice(-6):String(v??'—');
 const fmtMs=v=>typeof v==='number'?nf.format(v)+' ms':'—';
 const fmtPct=v=>typeof v==='number'?nf.format(v)+'%':'—';
+const fmtMarginalPct=v=>{
+  if(typeof v!=='number'||!Number.isFinite(v))return '—';
+  return Math.abs(v)>=1000?v.toExponential(2)+'%':nf.format(v)+'%';
+};
+const depthEdgePct=item=>{
+  const b=item?.firstProbeCostBreakdown;
+  return b&&typeof b.inputUsd==='number'&&b.inputUsd>0&&typeof b.outputUsd==='number'
+    ? ((b.outputUsd/b.inputUsd)-1)*100
+    : null;
+};
 const fmtMoney=v=>typeof v==='number'?money.format(v):'—';
 const clear=node=>{while(node.firstChild)node.removeChild(node.firstChild)};
 function setText(id,value){const el=$(id);if(el)el.textContent=String(value)}
@@ -23,7 +33,7 @@ function filteredOpportunities(){
   });
   filtered.sort((a,b)=>{
     if(state.sort==='bestNet')return (b.bestObservedNetProfitUsd??-Infinity)-(a.bestObservedNetProfitUsd??-Infinity);
-    if(state.sort==='spread')return (b.grossSpreadPct??-Infinity)-(a.grossSpreadPct??-Infinity);
+    if(state.sort==='spread')return (depthEdgePct(b)??-Infinity)-(depthEdgePct(a)??-Infinity);
     return (b.timestampMs??0)-(a.timestampMs??0);
   });
   return filtered;
@@ -52,7 +62,8 @@ function renderOpportunities(){
     tr.append(cell((item.buyMarket??'?')+' → '+(item.sellMarket??'?'),'route'));
     tr.append(cell(item.baseSymbol??'—','muted'));
     tr.append(cell(item.hopCount??'—','muted'));
-    tr.append(cell(fmtPct(item.grossSpreadPct)));
+    const depth=depthEdgePct(item);
+    tr.append(cell(fmtPct(depth),typeof depth==='number'?(depth>0?'pos':depth<0?'neg':'muted'):'muted',depth===null?'Exact probe yok':'Exact first-probe gross return'));
     tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),item.verifiedClosedCycle?moneyClass(item.firstProbeNetProfitUsd):'muted'));
     const latest=item.latestNetProfitUsd;
     tr.append(cell(latest===null&&item.status==='unavailable'?'unavailable':fmtMoney(latest),moneyClass(latest),item.reason??''));
@@ -97,7 +108,8 @@ function renderSelectedCandidate(){
     renderBreakdown('probe',null);renderBreakdown('best',null);return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
-  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' truth spread · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
+  const depth=depthEdgePct(item);
+  setText('selectedCandidateMeta','depth '+fmtPct(depth)+' · marginal '+fmtMarginalPct(item.grossSpreadPct)+' · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
   setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
@@ -247,7 +259,7 @@ function renderSpotlight(item){
   }
   $('spotlight').classList.add('has-positive');
   setText('spotlightRoute',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
-  setText('spotlightMeta',fmtPct(item.grossSpreadPct)+' spread · '+fmtMoney(item.latestInputUsd)+' input · '+ago(item.timestampMs)+' · block '+short(item.blockNumber));
+  setText('spotlightMeta','depth '+fmtPct(depthEdgePct(item))+' · '+fmtMoney(item.latestInputUsd)+' input · '+ago(item.timestampMs)+' · block '+short(item.blockNumber));
   setText('spotlightNet',fmtMoney(item.latestNetProfitUsd));
 }
 function render(data){
