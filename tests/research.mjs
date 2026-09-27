@@ -541,3 +541,33 @@ test('seed validation amounts clip and deduplicate around the analytical optimum
   assert.deepEqual(seedValidationAmounts(1,10,100),[10,12.5]);
   assert.deepEqual(seedValidationAmounts(NaN,1,100),[]);
 });
+
+
+test('economic truth uses WETH as the real quoter base when Par route starts from wrapped ETH', () => {
+  const weth='0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73';
+  const qa='0x7777777777777777777777777777777777777777';
+  const qb='0x8888888888888888888888888888888888888888';
+  const wethQa=poolKeyFor(qa,weth,3000,60);
+  const wethQb=poolKeyFor(qb,weth,3000,60);
+  const parA=poolKeyFor(token,qa,30000,10);
+  const parB=poolKeyFor(token,qb,30000,10);
+  const meta={
+    token,kind:'multi',router,factory:router,locker:router,deployer:router,creatorFeeRecipient:router,
+    poolFee:30000,tickSpacing:10,baseFeeBps:100,creatorTaxBps:200,protocolFeeShareBps:0,launchedAt:1,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,poolKey:parA,poolId:poolIdOf(parA),tokenIsCurrency0:parA.currency0===token,positionId:1n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,poolKey:parB,poolId:poolIdOf(parB),tokenIsCurrency0:parB.currency0===token,positionId:2n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+    ],
+    routes:[
+      {buyHops:[{key:wethQa,v3:false}],sellHops:[{key:wethQa,v3:false}],qualifies:true},
+      {buyHops:[{key:wethQb,v3:false}],sellHops:[{key:wethQb,v3:false}],qualifies:true},
+    ],
+  };
+  const best=bestStructuralCycle(enumerateClosedCycles(meta,0,1));
+  assert.ok(best);
+  assert.equal(best.base.toLowerCase(),weth.toLowerCase());
+  assert.equal(best.baseSymbol,'WETH');
+  assert.equal(best.hopCount,4);
+  assert.equal(best.hops[0].input.toLowerCase(),weth.toLowerCase());
+  assert.equal(best.hops.at(-1).output.toLowerCase(),weth.toLowerCase());
+});
