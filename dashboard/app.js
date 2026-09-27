@@ -284,6 +284,8 @@ function render(data){
   setText('sizingP95',fmtMs(data.radar.p95SizingMs));
   setText('missRate',fmtPct(data.radar.missedDeadlineRatePct));
   setText('missP95',fmtMs(data.radar.p95DeadlineMissMs));
+  setText('depthRejectCount',nf.format(data.radar.depthRejectedCandidates??0));
+  setText('depthLiquidityFailures',nf.format(data.radar.notEnoughLiquidityFailures??0));
   setText('rpcCount',data.rpcLatency.length+' örnek');
   setText('rpcLatest',data.rpcLatency[0]?data.rpcLatency[0].method+' · '+nf.format(data.rpcLatency[0].durationMs)+' ms':'—');
 
