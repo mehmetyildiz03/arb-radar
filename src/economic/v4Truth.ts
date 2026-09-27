@@ -207,38 +207,83 @@ export function cycleSpotMultiplier(cycle:ClosedCycle, states:Record<string,V4Po
   return multiplier;
 }
 
-export async function readCycleTruth(
+export async function readV4States(
   client: PublicClient,
-  cycle: ClosedCycle,
-  blockNumber?: bigint,
-): Promise<CycleTruth> {
-  if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
-  const block=blockNumber ?? await client.getBlockNumber({cacheTime:0});
-  const unique=new Map<string,{id:Hex}>();
-  for(const hop of [...cycle.hops,...cycle.referenceToBase]){
-    if(hop.v3) throw new Error('Same-block base valuation contains v3');
-    const id=poolIdOf(hop.key);
-    unique.set(id.toLowerCase(),{id});
+  cycles: readonly ClosedCycle[],
+  blockNumber: bigint,
+): Promise<Record<string,V4PoolState>> {
+  const ids=new Map<string,Hex>();
+  for(const cycle of cycles){
+    for(const hop of [...cycle.hops,...cycle.referenceToBase]){
+      if(hop.v3) continue;
+      const id=poolIdOf(hop.key);
+      ids.set(id.toLowerCase(),id);
+    }
   }
-  const entries=await Promise.all([...unique.values()].map(async ({id})=>{
-    const [slot0,liquidity]=await Promise.all([
-      client.readContract({address:ROBINHOOD_STATE_VIEW,abi:stateViewAbi,functionName:'getSlot0',args:[id],blockNumber:block}),
-      client.readContract({address:ROBINHOOD_STATE_VIEW,abi:stateViewAbi,functionName:'getLiquidity',args:[id],blockNumber:block}),
-    ]);
-    const [sqrtPriceX96,tick,protocolFee,lpFee]=slot0;
-    const state:V4PoolState={poolId:id,sqrtPriceX96,tick:Number(tick),protocolFee:Number(protocolFee),lpFee:Number(lpFee),liquidity};
-    return [id.toLowerCase(),state] as const;
+  const unique=[...ids.values()];
+  if(unique.length===0) return {};
+
+  const slotContracts=unique.map(id=>({
+    address:ROBINHOOD_STATE_VIEW,
+    abi:stateViewAbi,
+    functionName:'getSlot0' as const,
+    args:[id] as const,
   }));
-  const states=Object.fromEntries(entries);
+  const liquidityContracts=unique.map(id=>({
+    address:ROBINHOOD_STATE_VIEW,
+    abi:stateViewAbi,
+    functionName:'getLiquidity' as const,
+    args:[id] as const,
+  }));
+  const [slots,liquidities]=await Promise.all([
+    client.multicall({contracts:slotContracts,blockNumber,allowFailure:false}),
+    client.multicall({contracts:liquidityContracts,blockNumber,allowFailure:false}),
+  ]);
+
+  const entries=unique.map((id,index)=>{
+    const slot0=slots[index] as readonly [bigint,number,number,number];
+    const liquidity=liquidities[index] as bigint;
+    const [sqrtPriceX96,tick,protocolFee,lpFee]=slot0;
+    const state:V4PoolState={
+      poolId:id,
+      sqrtPriceX96,
+      tick:Number(tick),
+      protocolFee:Number(protocolFee),
+      lpFee:Number(lpFee),
+      liquidity,
+    };
+    return [id.toLowerCase(),state] as const;
+  });
+  return Object.fromEntries(entries);
+}
+
+export function cycleTruthFromStates(
+  cycle: ClosedCycle,
+  states: Record<string,V4PoolState>,
+  blockNumber: bigint,
+): CycleTruth {
+  if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
   const infinitesimalMultiplier=cycleSpotMultiplier(cycle,states,true);
   return {
-    blockNumber:block,
+    blockNumber,
     cycle,
     states,
     infinitesimalMultiplier,
     infinitesimalEdgeBps:(infinitesimalMultiplier-1)*10_000,
     passesInfinitesimalEdge:infinitesimalMultiplier>1,
   };
+}
+
+export async function readCycleTruth(
+  client: PublicClient,
+  cycle: ClosedCycle,
+  blockNumber?: bigint,
+): Promise<CycleTruth> {
+  if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
+  if(cycle.referenceToBase.some(h=>h.v3)) throw new Error('Same-block base valuation contains v3');
+  const block=blockNumber ?? await client.getBlockNumber({cacheTime:0});
+  const states=await readV4States(client,[cycle],block);
+  return cycleTruthFromStates(cycle,states,block);
 }
 
 export interface ClosedCycleQuote {
