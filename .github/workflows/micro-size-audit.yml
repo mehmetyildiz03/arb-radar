@@ -8,6 +8,9 @@ on:
       - '.github/workflows/micro-size-audit.yml'
       - 'src/economic/**'
       - 'src/adapters/**'
+      - 'src/index.ts'
+      - 'src/config.ts'
+      - 'src/research/measurement.ts'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:
