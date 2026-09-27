@@ -79,15 +79,17 @@ export async function runDepthAwareSizing<Q,F>(options:{
     if(await tryAmount(amount)==='stop') break;
   }
 
-  const upper=firstLiquidityFailureUsd ?? options.maxUsd+1e-9;
-  const extras=[...(options.extraAmountsUsd??[])]
-    .filter(x=>Number.isFinite(x)&&x>=options.minUsd&&x<=options.maxUsd&&x<upper)
-    .map(normalizeUsd)
-    .filter((x,i,a)=>a.indexOf(x)===i&&!attempted.has(x))
-    .sort((a,b)=>a-b);
+  if(stoppedReason!=='gross-nonpositive'){
+    const upper=firstLiquidityFailureUsd ?? options.maxUsd+1e-9;
+    const extras=[...(options.extraAmountsUsd??[])]
+      .filter(x=>Number.isFinite(x)&&x>=options.minUsd&&x<=options.maxUsd&&x<upper)
+      .map(normalizeUsd)
+      .filter((x,i,a)=>a.indexOf(x)===i&&!attempted.has(x))
+      .sort((a,b)=>a-b);
 
-  for(const amount of extras){
-    if(await tryAmount(amount)==='stop') break;
+    for(const amount of extras){
+      if(await tryAmount(amount)==='stop') break;
+    }
   }
 
   const finite=quotes
