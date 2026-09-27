@@ -43,6 +43,7 @@ export async function measureCandidate<C, Q, B>(options: {
   withProbePhase?: <T>(work: () => Promise<T>) => Promise<T>;
   beforeSizing?: () => Promise<void>;
   withSizingPhase?: <T>(work: () => Promise<T>) => Promise<T>;
+  continueAfterFirst?: (quote: Q) => boolean;
 }, clock = monotonicClock) {
   const timing: CaptureTiming = {
     discoveredAtMs: options.discoveredAtMs,
@@ -84,8 +85,11 @@ export async function measureCandidate<C, Q, B>(options: {
       ? await options.withProbePhase(probePhase)
       : await probePhase();
 
-    if (first[0].error) {
+    if (first[0].error || first[0].quote === null) {
       timing.firstExecutableQuoteSucceeded = false;
+      return { best: null, samples: first, timing: timingReport(timing) };
+    }
+    if (options.continueAfterFirst && !options.continueAfterFirst(first[0].quote)) {
       return { best: null, samples: first, timing: timingReport(timing) };
     }
 
