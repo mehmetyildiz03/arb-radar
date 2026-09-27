@@ -47,7 +47,7 @@ export async function runDepthAwareSizing<Q,F>(options:{
   const failures:Array<DepthFailure<F>>=[];
   const attempted=new Set<number>();
   let firstLiquidityFailureUsd:number|null=null;
-  let stoppedReason:DepthSizingResult<Q,F>['stoppedReason']='no-quote';
+  const stop={reason:'no-quote' as DepthSizingResult<Q,F>['stoppedReason']};
 
   const tryAmount=async(inputUsd:number):Promise<'continue'|'stop'>=>{
     const amount=normalizeUsd(inputUsd);
@@ -57,9 +57,9 @@ export async function runDepthAwareSizing<Q,F>(options:{
       const quote=await options.quote(amount);
       quotes.push(quote);
       options.onQuote?.(quote,amount);
-      stoppedReason='max-reached';
+      stop.reason='max-reached';
       if(!options.grossPositive(quote)){
-        stoppedReason='gross-nonpositive';
+        stop.reason='gross-nonpositive';
         return 'stop';
       }
       return 'continue';
@@ -70,7 +70,7 @@ export async function runDepthAwareSizing<Q,F>(options:{
       failures.push(item);
       options.onFailure?.(item);
       firstLiquidityFailureUsd=amount;
-      stoppedReason='liquidity-boundary';
+      stop.reason='liquidity-boundary';
       return 'stop';
     }
   };
@@ -79,7 +79,7 @@ export async function runDepthAwareSizing<Q,F>(options:{
     if(await tryAmount(amount)==='stop') break;
   }
 
-  if(stoppedReason!=='gross-nonpositive'){
+  if(stop.reason!=='gross-nonpositive'){
     const upper=firstLiquidityFailureUsd ?? options.maxUsd+1e-9;
     const extras=[...(options.extraAmountsUsd??[])]
       .filter(x=>Number.isFinite(x)&&x>=options.minUsd&&x<=options.maxUsd&&x<upper)
@@ -101,6 +101,6 @@ export async function runDepthAwareSizing<Q,F>(options:{
     failures,
     bestQuote:finite[0]?.quote ?? null,
     firstLiquidityFailureUsd,
-    stoppedReason:firstLiquidityFailureUsd!==null && stoppedReason==='max-reached' ? 'liquidity-boundary' : stoppedReason,
+    stoppedReason:firstLiquidityFailureUsd!==null && stop.reason==='max-reached' ? 'liquidity-boundary' : stop.reason,
   };
 }
