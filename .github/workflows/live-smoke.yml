@@ -40,3 +40,8 @@ jobs:
           timeout 180s node dist/index.js | tee /tmp/arb-radar-v08-smoke.log
           grep -q '"engine":"v0.8-economic-truth"' /tmp/arb-radar-v08-smoke.log
           grep -q '"screenBlock"' /tmp/arb-radar-v08-smoke.log
+          grep -q '"truthScanFailures":0' /tmp/arb-radar-v08-smoke.log
+          if grep -q '"truthScanUnavailable"' /tmp/arb-radar-v08-smoke.log; then
+            echo "truth scan failure detected"
+            exit 1
+          fi
