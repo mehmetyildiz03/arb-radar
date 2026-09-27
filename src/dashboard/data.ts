@@ -636,10 +636,16 @@ export function buildDashboardSnapshot(
     const { opportunities: allOpportunities, paperPnl, pnlTraces, latestPositiveOpportunity } = summarizeOpportunities(quoteRows,fromMs,generatedAtMs);
     for (const item of allOpportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
 
-    const quoteBackedCandidates = funnel.quoteBackedCandidates;
-    const positiveExecutableQuotes = funnel.positiveExecutableQuotes;
+    const quoteBackedCandidates = selectedRunId === null
+      ? allOpportunities.filter(x=>x.quoteCount>0).length
+      : funnel.quoteBackedCandidates;
+    const positiveExecutableQuotes = selectedRunId === null
+      ? allOpportunities.filter(x=>x.status==='positive'&&x.quoteCount>0).length
+      : funnel.positiveExecutableQuotes;
     const nonpositiveExecutableQuotes = Math.max(0,quoteBackedCandidates-positiveExecutableQuotes);
-    const unavailableQuotes = funnel.unavailableQuotes;
+    const unavailableQuotes = selectedRunId === null
+      ? allOpportunities.filter(x=>x.status==='unavailable').length
+      : funnel.unavailableQuotes;
 
     const timings: Array<Record<string,unknown>> = [];
     const queueDelays: number[] = [];
