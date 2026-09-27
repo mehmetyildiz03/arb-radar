@@ -276,7 +276,7 @@ async function tick(): Promise<void> {
           });
           completed.push(...gridQuotes);
           completed.sort((a,b)=>a.inputUsd-b.inputUsd);
-          for(const quote of completed) persistQuote(quote,sizingMode==='analytic-seed-exact'?'sizing-seed':'sizing-grid');
+          for(const quote of completed) persistQuote(quote,'sizing-grid');
           return bestGrid?{...bestGrid,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock}:null;
         },
         profit:q=>q.costBreakdown.netProfitUsd,
