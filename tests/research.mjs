@@ -697,10 +697,11 @@ test('depth-aware sizing fails closed on unknown quote errors', async () => {
   }),/rpc corrupted/);
 });
 
-test('depth-aware sizing stops larger probes when exact gross edge is nonpositive', async () => {
+test('depth-aware sizing stops larger probes and seed extras when exact gross edge is nonpositive', async () => {
   const calls=[];
   const result=await runDepthAwareSizing({
     minUsd:.01,maxUsd:100,
+    extraAmountsUsd:[.02,.05,5],
     quote:async amount=>{calls.push(amount);return {inputUsd:amount,outputUsd:amount*.99,net:-1}},
     score:q=>q.net,
     grossPositive:q=>q.outputUsd>q.inputUsd,
