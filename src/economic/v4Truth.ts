@@ -43,6 +43,7 @@ export interface ClosedCycle {
   referenceToBase: DirectedPoolHop[];
   hopCount: number;
   allV4: boolean;
+  hooklessV4: boolean;
 }
 
 export interface V4PoolState {
@@ -153,6 +154,7 @@ export function enumerateClosedCycles(
         referenceToBase,
         hopCount:hops.length,
         allV4:hops.every(h=>!h.v3),
+        hooklessV4:hops.every(h=>!h.v3 && same(h.key.hooks,zeroAddress)),
       });
     }
   }
@@ -301,7 +303,7 @@ export async function quoteClosedCycle(
   amountIn: bigint,
   blockNumber: bigint,
 ): Promise<ClosedCycleQuote> {
-  if(!cycle.allV4) throw new Error('Canonical V4Quoter requires an all-v4 cycle');
+  if(!cycle.allV4 || !cycle.hooklessV4) throw new Error('Canonical V4Quoter requires a hookless all-v4 cycle');
   if(amountIn<=0n || amountIn>(2n**128n-1n)) throw new Error('Invalid uint128 cycle input');
   const path=cycle.hops.map(hop=>({
     intermediateCurrency:hop.output,
@@ -311,6 +313,7 @@ export async function quoteClosedCycle(
     hookData:'0x' as Hex,
   }));
   const simulation=await client.simulateContract({
+    account:'0x000000000000000000000000000000000000dEaD',
     address:ROBINHOOD_V4_QUOTER,
     abi:v4QuoterAbi,
     functionName:'quoteExactInput',
