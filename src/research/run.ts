@@ -3,14 +3,14 @@ import { randomUUID } from 'node:crypto';
 export interface RunContext {
   runId: string;
   engineVersion: string;
-  startedAtMs: number;
+  runStartedAtMs: number;
 }
 
 export function createRunContext(engineVersion = '0.8.0-economic-truth', now = Date.now): RunContext {
   return {
     runId: randomUUID(),
     engineVersion,
-    startedAtMs: now(),
+    runStartedAtMs: now(),
   };
 }
 
