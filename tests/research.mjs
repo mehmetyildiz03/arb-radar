@@ -23,6 +23,7 @@ import {
   enumerateClosedCycles, bestStructuralCycle, totalSwapFeePips,
   directionalProtocolFee, cycleSpotMultiplier, readCycleTruth, quoteClosedCycle
 } from '../dist/economic/v4Truth.js';
+import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -472,12 +473,12 @@ test('same-block v4 truth and canonical quoter operate on one closed multi-hop c
   const calls=[];
   const client={
     getBlockNumber:async()=>50n,
-    readContract:async args=>{
+    multicall:async ({contracts})=>contracts.map(args=>{
       calls.push(args);
       if(args.functionName==='getSlot0')return [Q96,0,0,0];
       if(args.functionName==='getLiquidity')return 1000n;
       throw Error('unexpected read');
-    },
+    }),
     simulateContract:async args=>{
       calls.push(args);
       return {result:[110n,123456n]};
@@ -495,4 +496,48 @@ test('same-block v4 truth and canonical quoter operate on one closed multi-hop c
   const quoterCall=calls.find(x=>x.functionName==='quoteExactInput');
   assert.equal(quoterCall.args[0].path.length,cycle.hops.length);
   assert.equal(quoterCall.args[0].exactCurrency.toLowerCase(),cycle.base.toLowerCase());
+});
+
+
+test('constant-product sizing seed matches brute-force optimum for a synthetic two-pool arbitrage', () => {
+  const input={
+    buyQuoteReserve:1000,
+    buyTokenReserve:1000,
+    sellTokenReserve:1000,
+    sellQuoteReserve:1300,
+    buyFeeMultiplier:.97,
+    sellFeeMultiplier:.97,
+    baseToBuyQuoteRate:1,
+    sellQuoteToBaseRate:1,
+  };
+  const seed=optimalBaseInputConstantProduct(input);
+  assert.ok(seed&&seed>0);
+  const profit=q=>{
+    const t=input.buyTokenReserve*input.buyFeeMultiplier*q/(input.buyQuoteReserve+input.buyFeeMultiplier*q);
+    const out=input.sellQuoteReserve*input.sellFeeMultiplier*t/(input.sellTokenReserve+input.sellFeeMultiplier*t);
+    return out-q;
+  };
+  let brute={q:0,p:-Infinity};
+  for(let q=.01;q<=300;q+=.01){
+    const p=profit(q);
+    if(p>brute.p)brute={q,p};
+  }
+  assert.ok(Math.abs(seed-brute.q)<.05, `seed ${seed} brute ${brute.q}`);
+  assert.ok(profit(seed)>0);
+});
+
+test('constant-product seed returns no positive size when the marginal cycle has no edge', () => {
+  const seed=optimalBaseInputConstantProduct({
+    buyQuoteReserve:1000,buyTokenReserve:1000,
+    sellTokenReserve:1000,sellQuoteReserve:1000,
+    buyFeeMultiplier:.97,sellFeeMultiplier:.97,
+    baseToBuyQuoteRate:1,sellQuoteToBaseRate:1,
+  });
+  assert.equal(seed,null);
+});
+
+test('seed validation amounts clip and deduplicate around the analytical optimum', () => {
+  assert.deepEqual(seedValidationAmounts(100,10,100),[75,100]);
+  assert.deepEqual(seedValidationAmounts(1,10,100),[10,12.5]);
+  assert.deepEqual(seedValidationAmounts(NaN,1,100),[]);
 });
