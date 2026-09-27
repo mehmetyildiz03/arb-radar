@@ -46,21 +46,21 @@ test('dashboard uses the time window for quality metrics and keeps display limit
       screen:{grossSpreadPct:8.5},
       quote:{inputUsd:10,outputUsd:11,gasUsd:.1,extraCostsUsd:.05,safetyMarginUsd:.1,blockNumber:'123',
         profile:{blockReadMs:10,buySimulationMs:20,sellSimulationMs:30,buyGasEstimateMs:40,sellGasEstimateMs:50,gasPriceMs:5,blockConfirmMs:10,totalMs:180}},
-      netProfitUsd:.75
+      netProfitUsd:.75,verifiedClosedCycle:true,engine:'v0.8-economic-truth'
     },{timestampMs:at+2,blockNumber:123n,source:'fixture'});
     store.record('executable_quotes','opp-2',{status:'unavailable',reason:'fixture failure',route:{token:'0xtoken',buy:{quoteSymbol:'A'},sell:{quoteSymbol:'C'}}},{timestampMs:at+3,blockNumber:null,source:'fixture'});
     store.record('executable_quotes','opp-3',{
       route:{token:'0xtoken',buy:{quoteSymbol:'C'},sell:{quoteSymbol:'B'}},
       screen:{grossSpreadPct:6.2},
       quote:{inputUsd:5,outputUsd:4.8,gasUsd:.1,blockNumber:'124'},
-      netProfitUsd:-.3
+      netProfitUsd:-.3,verifiedClosedCycle:true,engine:'v0.8-economic-truth'
     },{timestampMs:at+4,blockNumber:124n,source:'fixture'});
     store.record('executable_quotes','opp-1',{
       route:{token:'0xtoken',buy:{quoteSymbol:'A'},sell:{quoteSymbol:'B'}},
       screen:{grossSpreadPct:8.1},
       quote:{inputUsd:1,outputUsd:.95,gasUsd:.02,blockNumber:'125',
         profile:{blockReadMs:11,buySimulationMs:21,sellSimulationMs:31,buyGasEstimateMs:41,sellGasEstimateMs:51,gasPriceMs:6,blockConfirmMs:11,totalMs:185}},
-      netProfitUsd:-.07
+      netProfitUsd:-.07,verifiedClosedCycle:true,engine:'v0.8-economic-truth'
     },{timestampMs:at+5,blockNumber:125n,source:'fixture'});
 
     // Quote is written inside the selected window, but the candidate was discovered before it.
@@ -200,12 +200,14 @@ test('dashboard current-run mode isolates metrics across runs and exact funnel i
       },{timestampMs:now-4000,blockNumber:null,source:'fixture'});
       store.record('executable_quotes',`old:${i}`,{
         ...oldRun,discoveredAtMs:now-4000,route:{token:'0xold'},screen:{grossSpreadPct:99},
-        quote:{inputUsd:1,outputUsd:2,gasUsd:0},netProfitUsd:1
+        quote:{inputUsd:1,outputUsd:2,gasUsd:0},netProfitUsd:1,
+        verifiedClosedCycle:true,engine:'fixture-verified'
       },{timestampMs:now-3000,blockNumber:1n,source:'fixture'});
     }
     store.record('executable_quotes','new:1',{
       ...newRun,discoveredAtMs:now-5000,route:{token:'0xnew'},screen:{grossSpreadPct:7},
-      quote:{inputUsd:1,outputUsd:.9,gasUsd:0},netProfitUsd:-.1
+      quote:{inputUsd:1,outputUsd:.9,gasUsd:0},netProfitUsd:-.1,
+      verifiedClosedCycle:true,engine:'v0.8-economic-truth'
     },{timestampMs:now-2000,blockNumber:2n,source:'fixture'});
     store.record('opportunity_lifecycle','new:1',{
       ...newRun,measurementTiming:{discoveredAtMs:now-5000,discoveryToFirstQuoteCompletedMs:100,firstQuoteDurationMs:80,sizingDurationMs:200}
@@ -238,6 +240,33 @@ test('dashboard current-run mode isolates metrics across runs and exact funnel i
     assert.equal(old.radar.quoteBackedCandidates,10);
     assert.equal(old.radar.positiveExecutableQuotes,10);
     assert.equal(old.radar.medianRpcLatencyMs,9999);
+  } finally {
+    try { store.close(); } catch {}
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
+
+
+test('unverified legacy positive quote never becomes a verified green candidate', () => {
+  const dir=mkdtempSync(join(tmpdir(),'arb-radar-unverified-'));
+  const dbPath=join(dir,'radar.sqlite');
+  const store=new ResearchStore(dbPath);
+  const now=2_000_000_000_000;
+  const run={runId:'run-v08',engineVersion:'0.8.0-economic-truth',runStartedAtMs:now-1000};
+  try {
+    store.record('radar_runs',run.runId,run,{timestampMs:run.runStartedAtMs,blockNumber:null,source:'fixture'});
+    store.record('route_screens','candidate',{...run,discoveredAtMs:now-500,route:{token:'0x1'},screen:{passesFeeFloor:true,grossSpreadPct:10}},
+      {timestampMs:now-500,blockNumber:null,source:'fixture'});
+    store.record('executable_quotes','candidate',{...run,discoveredAtMs:now-500,route:{token:'0x1'},screen:{grossSpreadPct:10},
+      quote:{inputUsd:1,outputUsd:2,gasUsd:0},netProfitUsd:1,verifiedClosedCycle:false},
+      {timestampMs:now-400,blockNumber:1n,source:'fixture'});
+    store.close();
+    const snapshot=buildDashboardSnapshot(dbPath,100,now,60_000,'current');
+    assert.equal(snapshot.radar.qualifyingScreens,1);
+    assert.equal(snapshot.radar.quoteBackedCandidates,0);
+    assert.equal(snapshot.radar.positiveExecutableQuotes,0);
+    assert.equal(snapshot.opportunities[0].status,'nonpositive');
+    assert.equal(snapshot.opportunities[0].verifiedClosedCycle,false);
   } finally {
     try { store.close(); } catch {}
     rmSync(dir,{recursive:true,force:true});
