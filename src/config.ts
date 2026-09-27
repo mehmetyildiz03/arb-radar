@@ -6,6 +6,7 @@ export interface RadarConfig {
   paperCapitalUsd: number;
   minNetProfitUsd: number;
   maxCandidateTradeUsd: number;
+  minCandidateTradeUsd: number;
   probeConcurrency: number;
   sizingConcurrency: number;
   sizingQuoteConcurrency: number;
@@ -30,6 +31,11 @@ export function loadConfig(env = process.env): RadarConfig {
     paperCapitalUsd: positiveNumber(env.PAPER_CAPITAL_USD, 100),
     minNetProfitUsd: positiveNumber(env.MIN_NET_PROFIT_USD, 0.05),
     maxCandidateTradeUsd: positiveNumber(env.MAX_CANDIDATE_TRADE_USD, 100),
+    minCandidateTradeUsd: Math.min(
+      positiveNumber(env.MIN_CANDIDATE_TRADE_USD, 0.10),
+      positiveNumber(env.MAX_CANDIDATE_TRADE_USD, 100),
+      positiveNumber(env.PAPER_CAPITAL_USD, 100),
+    ),
     probeConcurrency: Math.min(8, Math.max(1, Math.floor(positiveNumber(env.PROBE_CONCURRENCY, 2)))),
     sizingConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_CONCURRENCY, 1)))),
     sizingQuoteConcurrency: Math.min(4, Math.max(1, Math.floor(positiveNumber(env.SIZING_QUOTE_CONCURRENCY, 2)))),
