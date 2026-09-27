@@ -19,7 +19,9 @@ export function enumerateDirectedRoutes(launch: LaunchSnapshot): DirectedRoute[]
 export function screenRoute(route: DirectedRoute, extraCostBps = 0, freshness?: { nowMs: number; maxAgeMs: number }): RouteScreen | null {
   const buyPrice = route.buy.tokenPriceEth;
   const sellPrice = route.sell.tokenPriceEth;
-  if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice) || !(buyPrice > 0) || !(sellPrice > 0) || sellPrice <= buyPrice) return null;
+  if (typeof buyPrice !== 'number' || typeof sellPrice !== 'number' ||
+      !Number.isFinite(buyPrice) || !Number.isFinite(sellPrice) ||
+      buyPrice <= 0 || sellPrice <= 0 || sellPrice <= buyPrice) return null;
   if (!Number.isFinite(extraCostBps) || extraCostBps < 0 || extraCostBps >= 10_000) return null;
   if ([route.buy, route.sell].some(m => m.stale || (freshness &&
     (m.priceAtMs === undefined || !Number.isFinite(m.priceAtMs) || m.priceAtMs > freshness.nowMs || freshness.nowMs - m.priceAtMs > freshness.maxAgeMs)))) return null;
