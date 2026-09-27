@@ -152,7 +152,8 @@ async function tick(): Promise<void> {
         const prepared=await prepareLaunchEconomicCandidates(client,meta,snapshot,ethValuation!.usdPerEth,{
           paperCapitalUsd:config.paperCapitalUsd,
           maxTradeUsd:config.maxCandidateTradeUsd,
-          minTradeUsd:1,
+          minTradeUsd:config.minCandidateTradeUsd,
+          screenProbeUsd:config.screenProbeUsd,
           blockNumber:screenBlock,
         });
         return prepared.map(item=>{
@@ -169,6 +170,9 @@ async function tick(): Promise<void> {
               baseSymbol:item.cycle.baseSymbol,
               hopCount:item.cycle.hopCount,
               infinitesimalEdgeBps:item.truth.infinitesimalEdgeBps,
+              microQuoteInputUsd:item.screen.microQuoteInputUsd,
+              microGrossEdgeBps:item.screen.microGrossEdgeBps,
+              microGrossMultiplier:item.screen.microGrossMultiplier,
               seedTrusted:item.seedTrusted,
               seedUsd:item.seedUsd,
             },
@@ -193,7 +197,7 @@ async function tick(): Promise<void> {
     candidates.map(candidate=>({
       key:candidate.key,
       discoveredAtMs:candidate.discoveredAtMs,
-      priority:candidate.prepared.truth.infinitesimalEdgeBps,
+      priority:candidate.prepared.screen.microGrossEdgeBps,
       value:candidate,
     })),
     {
@@ -205,7 +209,7 @@ async function tick(): Promise<void> {
     },
     async(queued,controls)=>{
       const {prepared,discoveredAtMs,key}=queued.value;
-      const trackedInput=Math.min(1,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
+      const trackedInput=Math.min(config.screenProbeUsd,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
 
       const persistQuote=(quote:EconomicExecutionQuote,phase:string)=>{
         store.record('executable_quotes',key,withRun(run,{
@@ -270,6 +274,7 @@ async function tick(): Promise<void> {
           },{
             capitalUsd:config.paperCapitalUsd,
             maxTradeUsd:config.maxCandidateTradeUsd,
+            minTradeUsd:config.minCandidateTradeUsd,
             steps:8,
             minNetProfitUsd:config.minNetProfitUsd,
             quoteConcurrency:config.sizingQuoteConcurrency,
@@ -278,6 +283,10 @@ async function tick(): Promise<void> {
           return bestGrid?{...bestGrid,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock}:null;
         },
         profit:q=>q.costBreakdown.netProfitUsd,
+        // For hookless V4 exact-input paths the average output/input rate
+        // cannot improve as size grows. If the current-block micro probe is
+        // already gross-negative, skip expensive sizing and later requotes.
+        continueAfterFirst:q=>q.outputUsd>q.inputUsd,
         recordSample:sample=>store.record('opportunity_lifecycle',key,withRun(run,{
           ...sample,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.8-economic-truth',
         }),{timestampMs:sample.completedMs,blockNumber:sample.quote?.blockNumber??null,source:'arb-radar:economic-truth'}),
@@ -292,12 +301,16 @@ async function tick(): Promise<void> {
       }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:economic-truth'});
 
       const initial=samples[0];
-      const positive=!!(initial.quote && initial.netProfitUsd!==null &&
+      const initialPositive=!!(initial.quote && initial.netProfitUsd!==null &&
         initial.netProfitUsd>=config.minNetProfitUsd && initial.quote.green===true);
+      const sizedPositive=!!(best && best.netProfitUsd>=config.minNetProfitUsd);
+      const positive=initialPositive||sizedPositive;
       console.log(json({
         paperOnly:true,verifiedClosedCycle:true,key,best,summary,timing,
         base:prepared.cycle.baseSymbol,hopCount:prepared.cycle.hopCount,
         infinitesimalEdgeBps:prepared.truth.infinitesimalEdgeBps,
+        microGrossEdgeBps:prepared.screen.microGrossEdgeBps,
+        screenProbeUsd:prepared.screen.microQuoteInputUsd,
       }));
       return {positive};
     },
@@ -351,6 +364,8 @@ async function tick(): Promise<void> {
     sizingQuoteConcurrency:config.sizingQuoteConcurrency,
     truthScanConcurrency:config.truthScanConcurrency,
     truthLaunchLimit:config.truthLaunchLimit,
+    screenProbeUsd:config.screenProbeUsd,
+    minCandidateTradeUsd:config.minCandidateTradeUsd,
     candidateMaxQueueMs:config.candidateMaxQueueMs,
     scheduler:runtimeMetrics,
   }),{timestampMs:tickCompletedMs,blockNumber:screenBlock,source:'arb-radar:economic-truth'});
