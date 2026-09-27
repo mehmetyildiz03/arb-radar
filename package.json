@@ -17,7 +17,8 @@
     "dashboard": "npm run build && node dist/dashboard/server.js",
     "dashboard:smoke": "npm run build && node scripts/dashboard-smoke.mjs",
     "ui:check": "node --check dashboard/app.js",
-    "live:cycle-smoke": "npm run build && node scripts/v08-live-cycle-smoke.mjs"
+    "live:cycle-smoke": "npm run build && node scripts/v08-live-cycle-smoke.mjs",
+    "diagnose:truth": "npm run build && node scripts/v081-truth-diagnostic.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
