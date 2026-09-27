@@ -229,7 +229,7 @@ export async function prepareLaunchEconomicCandidates(
   for(const buy of launch.markets){
     for(const sell of launch.markets){
       if(buy.index===sell.index) continue;
-      const cycles=enumerateClosedCycles(launch,buy.index,sell.index).filter(c=>c.allV4);
+      const cycles=enumerateClosedCycles(launch,buy.index,sell.index).filter(c=>c.allV4&&c.hooklessV4);
       if(cycles.length){
         pairCycles.push({buy:buy.index,sell:sell.index,cycles});
         allCycles.push(...cycles);
