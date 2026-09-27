@@ -6,8 +6,8 @@ import { prepareLaunchEconomicCandidates, quotePreparedEconomicCandidate } from 
 const rpc=process.env.ROBINHOOD_RPC_URL ?? 'https://rpc.mainnet.chain.robinhood.com';
 const api=process.env.PAR_API_BASE ?? 'https://api.par.family';
 const limit=Math.min(20,Math.max(1,Number(process.env.TRUTH_LAUNCH_LIMIT ?? 8)));
-const top=Math.min(12,Math.max(1,Number(process.env.TRUTH_DIAGNOSTIC_TOP ?? 6)));
-const sizes=(process.env.TRUTH_DIAGNOSTIC_SIZES ?? '0.01,0.1,1,10')
+const top=Math.min(16,Math.max(1,Number(process.env.TRUTH_DIAGNOSTIC_TOP ?? 8)));
+const sizes=(process.env.TRUTH_DIAGNOSTIC_SIZES ?? '0.01,0.03,0.10,0.30,1,3,10')
   .split(',').map(Number).filter(x=>Number.isFinite(x)&&x>0);
 
 const client=createPublicClient({chain:robinhoodChain,transport:http(rpc,{retryCount:2,retryDelay:400,timeout:20_000})});
@@ -107,14 +107,46 @@ for(const candidate of selected){
   });
 }
 
+const bySize=Object.fromEntries(sizes.map(size=>{
+  const rows=output.flatMap(candidate=>candidate.quotes.filter(q=>q.inputUsd===size));
+  const quoted=rows.filter(q=>!q.error);
+  const grossPositive=quoted.filter(q=>q.grossQuotedEdgeUsd>0);
+  const paperPositive=quoted.filter(q=>q.netProfitUsd>0);
+  const bestNet=quoted.length?Math.max(...quoted.map(q=>q.netProfitUsd)):null;
+  const bestGross=quoted.length?Math.max(...quoted.map(q=>q.grossQuotedEdgeUsd)):null;
+  return [String(size),{
+    attempts:rows.length,
+    quoted:quoted.length,
+    failures:rows.length-quoted.length,
+    grossPositive:grossPositive.length,
+    paperPositive:paperPositive.length,
+    bestNetProfitUsd:bestNet,
+    bestGrossQuotedEdgeUsd:bestGross,
+  }];
+}));
+const allQuotes=output.flatMap(candidate=>candidate.quotes);
+const quoted=allQuotes.filter(q=>!q.error);
+const summary={
+  exactAttempts:allQuotes.length,
+  exactQuoted:quoted.length,
+  exactFailures:allQuotes.length-quoted.length,
+  grossPositive:quoted.filter(q=>q.grossQuotedEdgeUsd>0).length,
+  paperPositive:quoted.filter(q=>q.netProfitUsd>0).length,
+  bestPaperNetUsd:quoted.length?Math.max(...quoted.map(q=>q.netProfitUsd)):null,
+  bestGrossEdgeUsd:quoted.length?Math.max(...quoted.map(q=>q.grossQuotedEdgeUsd)):null,
+  bySize,
+};
+
 console.log(JSON.stringify({
   ok:true,
   paperOnly:true,
-  purpose:'v0.8.1 marginal-vs-executable-depth diagnostic',
+  purpose:'v0.8.2 full marginal-vs-executable-depth audit',
   blockNumber:blockNumber.toString(),
   launchesExamined:launches.length,
   candidateCount:candidates.length,
   selectedCount:selected.length,
+  sizes,
   failures,
+  summary,
   candidates:output,
 },(_,value)=>typeof value==='bigint'?value.toString():value));
