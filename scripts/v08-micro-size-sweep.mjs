@@ -1,10 +1,11 @@
 import { createPublicClient, http } from 'viem';
-import { createPar, robinhoodChain } from 'par-sdk';
+import { createPar, poolIdOf, robinhoodChain } from 'par-sdk';
 import { Discovery } from '../dist/adapters/discovery.js';
 import {
   prepareLaunchEconomicCandidates,
   quotePreparedEconomicCandidate,
 } from '../dist/economic/engine.js';
+import { rawSpotRate } from '../dist/economic/v4Truth.js';
 
 const rpc=process.env.ROBINHOOD_RPC_URL ?? 'https://rpc.mainnet.chain.robinhood.com';
 const api=process.env.PAR_API_BASE ?? 'https://api.par.family';
@@ -128,6 +129,26 @@ for(let scan=0;scan<scans;scan++){
       }
     }
 
+    const hopStates=prepared.cycle.hops.map((hop,index)=>{
+      const poolId=poolIdOf(hop.key).toLowerCase();
+      const state=prepared.truth.states[poolId];
+      return {
+        index,
+        role:hop.role,
+        poolId,
+        input:hop.input,
+        output:hop.output,
+        fee:hop.key.fee,
+        tickSpacing:hop.key.tickSpacing,
+        activeLiquidity:state?.liquidity?.toString() ?? null,
+        tick:state?.tick ?? null,
+        sqrtPriceX96:state?.sqrtPriceX96?.toString() ?? null,
+        lpFee:state?.lpFee ?? null,
+        protocolFee:state?.protocolFee ?? null,
+        spotRate:state?rawSpotRate(hop,state,true):null,
+      };
+    });
+
     console.log(JSON.stringify({
       kind:'candidate-sweep',
       scan,
@@ -141,6 +162,7 @@ for(let scan=0;scan<scans;scan++){
       seedTrusted:prepared.seedTrusted,
       seedUsd:prepared.seedUsd,
       quoteBlock:quoteBlock.toString(),
+      hopStates,
       results,
     }));
   }
