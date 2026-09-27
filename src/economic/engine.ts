@@ -41,6 +41,7 @@ export interface EconomicScreen extends RouteScreen {
   microGrossMultiplier: number;
   microGrossEdgeBps: number;
   microGasEstimate: bigint;
+  spotReliable: boolean;
   base: Address;
   baseSymbol: string;
   hopCount: number;
@@ -273,9 +274,7 @@ export async function prepareLaunchEconomicCandidates(
 
   for(const pair of pairCycles){
     const truths=pair.cycles
-      .filter(cycle=>cycleHasActiveLiquidity(cycle,states))
       .map(cycle=>cycleTruthFromStates(cycle,states,blockNumber))
-      .filter(truth=>truth.passesInfinitesimalEdge)
       .sort((a,b)=>
         a.cycle.hopCount-b.cycle.hopCount ||
         b.infinitesimalMultiplier-a.infinitesimalMultiplier ||
@@ -289,10 +288,17 @@ export async function prepareLaunchEconomicCandidates(
       amountOutRaw:bigint;
       gasEstimate:bigint;
       microGrossMultiplier:number;
+      spotReliable:boolean;
     }=null;
 
     for(const truth of truths){
       const cycle=truth.cycle;
+      const spotReliable=cycleHasActiveLiquidity(cycle,states);
+      // With positive active liquidity, hookless exact-input marginal price
+      // can only worsen with size, so a non-positive spot edge can be
+      // discarded cheaply. When active liquidity is zero, slot0 is not an
+      // executable marginal price; let the canonical micro quote decide.
+      if(spotReliable&&!truth.passesInfinitesimalEdge) continue;
       const baseKey=cycle.base.toLowerCase();
       let baseMeta=baseMetaCache.get(baseKey);
       try{
@@ -314,6 +320,7 @@ export async function prepareLaunchEconomicCandidates(
           amountOutRaw:micro.amountOut,
           gasEstimate:micro.gasEstimate,
           microGrossMultiplier,
+          spotReliable,
         };
         break;
       }catch{
@@ -342,6 +349,7 @@ export async function prepareLaunchEconomicCandidates(
       microGrossMultiplier:selected.microGrossMultiplier,
       microGrossEdgeBps,
       microGasEstimate:selected.gasEstimate,
+      spotReliable:selected.spotReliable,
       base:cycle.base,
       baseSymbol:cycle.baseSymbol,
       hopCount:cycle.hopCount,
