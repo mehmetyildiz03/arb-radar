@@ -7,8 +7,12 @@ export interface MarketSnapshot {
   index: number;
   pairToken: HexAddress | "0x0000000000000000000000000000000000000000";
   quoteSymbol: string;
+  quoteDecimals?: number;
   poolId?: `0x${string}`;
-  tokenPriceEth: number;
+  tokenPriceEth?: number;
+  phantomQuoteRaw?: string;
+  quoteRaisedRaw?: string;
+  tokensOnCurveRaw?: string;
   recentVolumeEth?: number;
 }
 
