@@ -10,6 +10,7 @@ import { ResearchStore, json } from './research/store.js';
 import { monotonicClock, summarizeLifecycle } from './research/lifecycle.js';
 import { measureCandidate } from './research/measurement.js';
 import { quoteCostBreakdown } from './research/costs.js';
+import { createRunContext, withRun } from './research/run.js';
 import {
   runStagedCandidates,
   sharedAsyncResource,
@@ -19,7 +20,9 @@ import {
 import type { DirectedRoute, LaunchSnapshot, RouteScreen } from './domain.js';
 
 const config = loadConfig();
+const run = createRunContext();
 const store = new ResearchStore(process.env.RADAR_DB ?? 'data/radar.sqlite');
+store.record('radar_runs', run.runId, run, { timestampMs: run.runStartedAtMs, blockNumber: null, source: 'arb-radar:run' });
 const source = config.robinhoodRpcUrl;
 const readMethods = new Set(['eth_call', 'eth_estimateGas', 'eth_blockNumber', 'eth_getBlockByNumber', 'eth_gasPrice', 'eth_chainId', 'eth_getCode', 'eth_getLogs', 'eth_getTransactionReceipt']);
 const rpcFetch: typeof fetch = async (url, init) => {
@@ -33,7 +36,7 @@ const rpcFetch: typeof fetch = async (url, init) => {
     const result = await response.clone().json() as { error?: { code?: number } };
     status = result.error ? `rpc-error:${result.error.code}` : String(response.status); return response;
   }
-  finally { store.record('rpc_latency_samples', body.method, { durationMs: Date.now() - started, status, params: body.params }, { timestampMs: started, blockNumber, source }); }
+  finally { store.record('rpc_latency_samples', body.method, withRun(run, { durationMs: Date.now() - started, status, params: body.params }), { timestampMs: started, blockNumber, source }); }
 };
 const client = createPublicClient({ chain: robinhoodChain, transport: http(source, { fetchFn: rpcFetch, retryCount: 0, timeout: 15_000 }) });
 const discovery = new Discovery(createPar({ client }), config.parApiBase);
@@ -77,7 +80,7 @@ async function tick(): Promise<void> {
     store.record('launches', launch.token, launch, provenance);
     for (const market of launch.markets) store.record('market_snapshots', `${launch.token}:${market.index}`, market, provenance);
     for (const { route, screen, discoveredAtMs } of screens) {
-      store.record('route_screens', `${launch.token}:${route.buy.index}:${route.sell.index}`, { route, screen, discoveredAtMs, rejected: screen === null }, { ...provenance, timestampMs: discoveredAtMs });
+      store.record('route_screens', `${launch.token}:${route.buy.index}:${route.sell.index}:${Math.floor(discoveredAtMs)}`, withRun(run, { route, screen, discoveredAtMs, rejected: screen === null }), { ...provenance, timestampMs: discoveredAtMs });
       if (screen?.passesFeeFloor) {
         const base = { launch, route, screen, discoveredAtMs };
         candidates.push({ ...base, key: candidateKey(base) });
@@ -134,7 +137,7 @@ async function tick(): Promise<void> {
           store.record('launches', launch.token, { metadata: meta, note: 'SDK metadata reads; not an atomic state snapshot' }, { timestampMs: Date.now(), blockNumber: null, source });
           const persistQuote = (q: Awaited<ReturnType<typeof simulateRoute>>) => {
             const costBreakdown = quoteCostBreakdown(q);
-            store.record('executable_quotes', key, { discoveredAtMs, route, quote: q, netProfitUsd: costBreakdown.netProfitUsd, costBreakdown, screen }, q);
+            store.record('executable_quotes', key, withRun(run, { discoveredAtMs, route, quote: q, netProfitUsd: costBreakdown.netProfitUsd, costBreakdown, screen }), q);
           };
           return {
             quote: async (amount: number, fixedBlock?: bigint, persist = true) => {
@@ -165,12 +168,12 @@ async function tick(): Promise<void> {
           return best;
         },
         profit: netProfit,
-        recordSample: sample => store.record('opportunity_lifecycle', key, { ...sample, trackedInputUsd: trackedInput }, { timestampMs: sample.completedMs, blockNumber: sample.quote?.blockNumber ?? null, source }),
-        recordTiming: timing => store.record('opportunity_lifecycle', key, { measurementTiming: timing }, { timestampMs: monotonicClock.now(), blockNumber: null, source }),
+        recordSample: sample => store.record('opportunity_lifecycle', key, withRun(run, { ...sample, trackedInputUsd: trackedInput }), { timestampMs: sample.completedMs, blockNumber: sample.quote?.blockNumber ?? null, source }),
+        recordTiming: timing => store.record('opportunity_lifecycle', key, withRun(run, { measurementTiming: timing }), { timestampMs: monotonicClock.now(), blockNumber: null, source }),
       });
 
       const summary = summarizeLifecycle(samples);
-      store.record('opportunity_lifecycle', key, { best, summary, timing, trackedInputUsd: trackedInput }, { timestampMs: Date.now(), blockNumber: null, source });
+      store.record('opportunity_lifecycle', key, withRun(run, { best, summary, timing, trackedInputUsd: trackedInput }), { timestampMs: Date.now(), blockNumber: null, source });
       const initial = samples[0];
       const positive = !!(initial.quote && initial.netProfitUsd !== null && initial.netProfitUsd >= config.minNetProfitUsd &&
         initial.quote.inputUsd + initial.quote.gasUsd + (initial.quote.extraCostsUsd ?? 0) <= config.paperCapitalUsd);
@@ -187,26 +190,26 @@ async function tick(): Promise<void> {
       continue;
     }
     if (result.reason instanceof StaleCandidateError) {
-      store.record('opportunity_lifecycle', result.candidate.key, {
+      store.record('opportunity_lifecycle', result.candidate.key, withRun(run, {
         status: 'dropped-stale-before-probe',
         ageMs: result.reason.ageMs,
         maxAgeMs: result.reason.maxAgeMs,
-      }, { timestampMs: monotonicClock.now(), blockNumber: null, source });
+      }), { timestampMs: monotonicClock.now(), blockNumber: null, source });
       continue;
     }
     unavailable++;
     const route = result.candidate.value.route;
-    store.record('executable_quotes', result.candidate.key, {
+    store.record('executable_quotes', result.candidate.key, withRun(run, {
       status: 'unavailable',
       reason: String(result.reason),
       route,
       discoveredAtMs: result.candidate.discoveredAtMs,
-    }, { timestampMs: Date.now(), blockNumber: null, source });
+    }), { timestampMs: Date.now(), blockNumber: null, source });
     console.warn(json({ key: result.candidate.key, quoteUnavailable: String(result.reason) }));
   }
 
   const tickCompletedMs = monotonicClock.now();
-  store.record('radar_runtime', `tick:${Math.floor(tickStartedMs)}`, {
+  store.record('radar_runtime', `tick:${Math.floor(tickStartedMs)}`, withRun(run, {
     tickStartedMs,
     tickCompletedMs,
     durationMs: tickCompletedMs - tickStartedMs,
@@ -220,7 +223,7 @@ async function tick(): Promise<void> {
     sizingQuoteConcurrency: config.sizingQuoteConcurrency,
     candidateMaxQueueMs: config.candidateMaxQueueMs,
     scheduler: runtimeMetrics,
-  }, { timestampMs: tickCompletedMs, blockNumber: null, source: 'arb-radar:scheduler' });
+  }), { timestampMs: tickCompletedMs, blockNumber: null, source: 'arb-radar:scheduler' });
 
   console.log(json({
     paperOnly: true,
@@ -237,7 +240,7 @@ let stopping = false;
 process.on('SIGINT', () => { stopping = true; });
 process.on('SIGTERM', () => { stopping = true; });
 try {
-  console.log('arb-radar v0.7 — PAPER RESEARCH ONLY');
+  console.log(`arb-radar ${run.engineVersion} — PAPER RESEARCH ONLY — run ${run.runId}`);
   if (await client.getChainId() !== robinhoodChain.id) throw new Error('Wrong RPC chain');
   do {
     try { await tick(); } catch (error) { console.error(String(error)); if (!process.argv.includes('--watch')) process.exitCode = 1; }
