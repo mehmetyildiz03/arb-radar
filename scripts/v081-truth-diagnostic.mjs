@@ -13,6 +13,33 @@ const sizes=(process.env.TRUTH_DIAGNOSTIC_SIZES ?? '0.01,0.03,0.10,0.30,1,3,10')
 const client=createPublicClient({chain:robinhoodChain,transport:http(rpc,{retryCount:2,retryDelay:400,timeout:20_000})});
 const discovery=new Discovery(createPar({client}),api);
 
+function classifyQuoteError(error){
+  let current=error;
+  let nested=null;
+  while(current){
+    const data=current?.data;
+    if(data?.errorName==='UnexpectedRevertBytes' && Array.isArray(data.args) && typeof data.args[0]==='string'){
+      nested=data.args[0];
+      break;
+    }
+    current=current?.cause;
+  }
+  const selector=typeof nested==='string'&&nested.startsWith('0x')&&nested.length>=10?nested.slice(0,10):null;
+  let innerError=null;
+  let poolId=null;
+  if(selector==='0x7a5ed734'){
+    innerError='NotEnoughLiquidity';
+    if(nested.length>=74) poolId='0x'+nested.slice(10,74);
+  }
+  return {
+    outerError:'UnexpectedRevertBytes',
+    innerSelector:selector,
+    innerError,
+    poolId,
+    message:String(error),
+  };
+}
+
 const ethResponse=await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot');
 if(!ethResponse.ok) throw new Error('ETH/USD unavailable: '+ethResponse.status);
 const ethBody=await ethResponse.json();
@@ -80,7 +107,7 @@ for(const candidate of selected){
         quoterGasEstimate:quote.quoterGasEstimate.toString(),
       });
     }catch(error){
-      quotes.push({inputUsd,error:String(error)});
+      quotes.push({inputUsd,error:classifyQuoteError(error)});
     }
   }
   output.push({
