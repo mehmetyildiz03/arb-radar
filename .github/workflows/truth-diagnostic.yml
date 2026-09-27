@@ -1,0 +1,32 @@
+name: Truth Diagnostic
+
+on:
+  push:
+    branches: [v0.8.1-truth-calibration]
+    paths:
+      - 'scripts/v081-truth-diagnostic.mjs'
+      - 'src/economic/**'
+      - '.github/workflows/truth-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Compare marginal truth with exact depth
+        env:
+          TRUTH_LAUNCH_LIMIT: 8
+          TRUTH_DIAGNOSTIC_TOP: 6
+          TRUTH_DIAGNOSTIC_SIZES: 0.01,0.1,1,10
+        run: node scripts/v081-truth-diagnostic.mjs
