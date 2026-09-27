@@ -305,10 +305,11 @@ export async function quotePreparedEconomicCandidate(
   client:PublicClient,
   prepared:PreparedEconomicCandidate,
   inputUsd:number,
-  options:{extraCostsUsd:number;safetyBps:number;gasBufferBps?:number},
+  options:{extraCostsUsd:number;safetyBps:number;gasBufferBps?:number;blockNumber?:bigint},
 ):Promise<EconomicExecutionQuote> {
   const amountInRaw=inputRawForUsd(inputUsd,prepared.baseUsdPrice,prepared.baseDecimals);
-  const closed=await quoteClosedCycle(client,prepared.cycle,amountInRaw,prepared.truth.blockNumber);
+  const quoteBlock=options.blockNumber ?? await client.getBlockNumber({cacheTime:0});
+  const closed=await quoteClosedCycle(client,prepared.cycle,amountInRaw,quoteBlock);
   const gasPriceWei=await client.getGasPrice();
   const gasBufferBps=options.gasBufferBps ?? 2000;
   const gasUnitsResearch=(closed.gasEstimate*BigInt(10_000+gasBufferBps)+9_999n)/10_000n;
