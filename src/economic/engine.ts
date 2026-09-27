@@ -239,6 +239,7 @@ export async function prepareLaunchEconomicCandidates(
   if(!allCycles.length) return [];
   const states=await readV4States(client,allCycles,blockNumber);
   const out:PreparedEconomicCandidate[]=[];
+  const baseMetaCache=new Map<string,{decimals:number;usd:number}>();
 
   for(const pair of pairCycles){
     const truths=pair.cycles.map(cycle=>cycleTruthFromStates(cycle,states,blockNumber));
@@ -249,8 +250,16 @@ export async function prepareLaunchEconomicCandidates(
     if(!truth||!truth.passesInfinitesimalEdge) continue;
 
     const cycle=truth.cycle;
-    const baseDecimals=await baseDecimalsAtBlock(client,launch,cycle.base,blockNumber);
-    const baseUsdPrice=await baseUsdAtBlock(client,cycle.base,baseDecimals,ethUsdPrice,blockNumber);
+    const baseKey=cycle.base.toLowerCase();
+    let baseMeta=baseMetaCache.get(baseKey);
+    if(!baseMeta){
+      const decimals=await baseDecimalsAtBlock(client,launch,cycle.base,blockNumber);
+      const usd=await baseUsdAtBlock(client,cycle.base,decimals,ethUsdPrice,blockNumber);
+      baseMeta={decimals,usd};
+      baseMetaCache.set(baseKey,baseMeta);
+    }
+    const baseDecimals=baseMeta.decimals;
+    const baseUsdPrice=baseMeta.usd;
     const route=directedRoute(snapshot,pair.buy,pair.sell);
     const grossMultiplier=cycleSpotMultiplier(cycle,states,false);
     const screen:EconomicScreen={
