@@ -1,0 +1,51 @@
+name: Live Smoke
+
+on:
+  push:
+    branches: [v0.8-economic-truth]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/live-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-read-only-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run one v0.8 public read-only scan
+        shell: bash
+        env:
+          RADAR_DB: /tmp/arb-radar-v08-smoke.sqlite
+          TRUTH_LAUNCH_LIMIT: 3
+          TRUTH_SCAN_CONCURRENCY: 1
+          PROBE_CONCURRENCY: 1
+          SIZING_CONCURRENCY: 1
+          SIZING_QUOTE_CONCURRENCY: 1
+          CANDIDATE_MAX_QUEUE_MS: 10000
+        run: |
+          set -euo pipefail
+          timeout 180s node dist/index.js | tee /tmp/arb-radar-v08-smoke.log
+          grep -q '"engine":"v0.8-economic-truth"' /tmp/arb-radar-v08-smoke.log
+          grep -q '"screenBlock"' /tmp/arb-radar-v08-smoke.log
+          grep -q '"truthScanFailures":0' /tmp/arb-radar-v08-smoke.log
+          if grep -q '"truthScanUnavailable"' /tmp/arb-radar-v08-smoke.log; then
+            echo "truth scan failure detected"
+            exit 1
+          fi
+      - name: Quote one real hookless all-V4 closed cycle
+        env:
+          TRUTH_LAUNCH_LIMIT: 12
+        run: node scripts/v08-live-cycle-smoke.mjs

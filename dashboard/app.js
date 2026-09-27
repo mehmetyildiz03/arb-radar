@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 const nf=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
 const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:4});
-const state={data:null,filter:'all',sort:'newest',query:'',windowSeconds:60,paused:false,selectedKey:null};
+const state={data:null,filter:'all',sort:'newest',query:'',windowSeconds:60,runId:'current',paused:false,selectedKey:null};
 const ago=ms=>{if(!ms)return 'henüz gözlem yok';const s=Math.max(0,Math.round((Date.now()-ms)/1000));if(s<60)return s+' sn önce';if(s<3600)return Math.floor(s/60)+' dk önce';return Math.floor(s/3600)+' sa önce'};
 const short=v=>typeof v==='string'&&v.length>18?v.slice(0,8)+'…'+v.slice(-6):String(v??'—');
 const fmtMs=v=>typeof v==='number'?nf.format(v)+' ms':'—';
@@ -50,8 +50,10 @@ function renderOpportunities(){
     tr.append(cell(dt.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),'muted'));
     tr.append(cell(short(item.token),'token',String(item.token??'')));
     tr.append(cell((item.buyMarket??'?')+' → '+(item.sellMarket??'?'),'route'));
+    tr.append(cell(item.baseSymbol??'—','muted'));
+    tr.append(cell(item.hopCount??'—','muted'));
     tr.append(cell(fmtPct(item.grossSpreadPct)));
-    tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),moneyClass(item.firstProbeNetProfitUsd)));
+    tr.append(cell(fmtMoney(item.firstProbeNetProfitUsd),item.verifiedClosedCycle?moneyClass(item.firstProbeNetProfitUsd):'muted'));
     const latest=item.latestNetProfitUsd;
     tr.append(cell(latest===null&&item.status==='unavailable'?'unavailable':fmtMoney(latest),moneyClass(latest),item.reason??''));
     tr.append(cell(fmtMoney(item.bestObservedNetProfitUsd),statusClass(item)));
@@ -95,8 +97,8 @@ function renderSelectedCandidate(){
     renderBreakdown('probe',null);renderBreakdown('best',null);return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
-  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' screening spread · '+(item.quoteCount??0)+' numeric quote · '+ago(item.timestampMs));
-  setText('selectedCandidateStatus',item.status==='positive'?'POZİTİF PAPER':item.status==='unavailable'?'UNAVAILABLE':'NEGATİF PAPER');
+  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' truth spread · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
+  setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
 }
@@ -208,9 +210,38 @@ function renderPipeline(pipeline){
     row.append(label,track,value);root.append(row);
   }
 }
+
+function renderRunControls(data){
+  const select=$('runSelect');
+  if(select){
+    const wanted=state.runId;
+    clear(select);
+    const current=document.createElement('option');current.value='current';current.textContent='Current run';select.append(current);
+    for(const run of data.run?.recentRuns??[]){
+      const option=document.createElement('option');
+      option.value=run.runId;
+      option.textContent=(run.runId===data.run.currentRunId?'Current · ':'')+run.engineVersion+' · '+short(run.runId);
+      select.append(option);
+    }
+    const all=document.createElement('option');all.value='all';all.textContent='Tüm runlar';select.append(all);
+    select.value=[...select.options].some(x=>x.value===wanted)?wanted:'current';
+    state.runId=select.value;
+  }
+  const selected=data.run?.selectedRunId;
+  setText('runSummary',selected
+    ? ` Run: ${short(selected)} · ${data.run.engineVersion??'unknown engine'} · yalnız bu run gösteriliyor.`
+    : ' Tüm runlar birlikte gösteriliyor.');
+  const current=data.runComparison?.current;
+  const previous=data.runComparison?.previous;
+  setText('currentRunBenchmark',current?fmtMs(current.lastTickDurationMs):'Current —');
+  setText('currentRunMeta',current?current.engineVersion+' · '+short(current.runId):'—');
+  setText('previousRunBenchmark',previous?fmtMs(previous.lastTickDurationMs):'Previous —');
+  setText('previousRunMeta',previous?previous.engineVersion+' · '+short(previous.runId):'—');
+}
+
 function renderSpotlight(item){
   if(!item){
-    setText('spotlightRoute','Pozitif paper quote bekleniyor');
+    setText('spotlightRoute','Verified pozitif cycle bekleniyor');
     setText('spotlightMeta','Amount-sensitive quote oluştuğunda burada özetlenecek.');
     setText('spotlightNet','—');$('spotlight').classList.remove('has-positive');return;
   }
@@ -220,7 +251,7 @@ function renderSpotlight(item){
   setText('spotlightNet',fmtMoney(item.latestNetProfitUsd));
 }
 function render(data){
-  state.data=data;ensureSelection();
+  state.data=data;ensureSelection();renderRunControls(data);
   const freshness=data.database.freshness;
   $('pulse').classList.toggle('live',freshness==='live');
   $('pulse').classList.toggle('delayed',freshness==='delayed');
@@ -274,7 +305,7 @@ function render(data){
 async function refresh(){
   if(state.paused)return;
   try{
-    const r=await fetch(`/api/snapshot?limit=500&windowSeconds=${state.windowSeconds}`,{cache:'no-store'});
+    const r=await fetch(`/api/snapshot?limit=500&windowSeconds=${state.windowSeconds}&runId=${encodeURIComponent(state.runId)}`,{cache:'no-store'});
     if(!r.ok)throw Error('HTTP '+r.status);
     render(await r.json());
   }catch(e){
@@ -282,6 +313,7 @@ async function refresh(){
   }
 }
 $('windowSelect').addEventListener('change',event=>{state.windowSeconds=Number(event.target.value)||60;refresh()});
+$('runSelect').addEventListener('change',event=>{state.runId=event.target.value||'current';state.selectedKey=null;refresh()});
 $('searchInput').addEventListener('input',event=>{state.query=event.target.value;renderOpportunities()});
 $('sortSelect').addEventListener('change',event=>{state.sort=event.target.value;renderOpportunities()});
 for(const button of document.querySelectorAll('.filter')){

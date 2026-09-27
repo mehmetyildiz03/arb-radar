@@ -16,6 +16,10 @@
       </div>
       <div class="top-actions">
         <span class="pill safe">READ ONLY</span>
+        <select class="pill run-select" id="runSelect" aria-label="Radar run seçimi">
+          <option value="current">Current run</option>
+          <option value="all">Tüm runlar</option>
+        </select>
         <button class="pill button" id="refreshToggle" type="button">Otomatik yenileme: açık</button>
         <span class="pill" id="updated">Veri bekleniyor</span>
       </div>
@@ -23,22 +27,37 @@
 
     <section class="warning">
       <strong>Paper-only research.</strong>
+      <span id="runSummary">Current run bekleniyor.</span><br>
       Spread yalnızca tarama sinyalidir. “Pozitif” etiketi, son analiz penceresinde en az bir amount-sensitive RPC quote’unun maliyetler sonrası pozitif paper sonuç vermesi anlamına gelir; gerçek işlem veya gerçekleşmiş kâr değildir.
     </section>
 
     <section class="metrics" aria-label="Radar özeti">
       <article class="metric"><span class="metric-label">Radar sağlığı</span><strong id="dbStatus">—</strong><small id="lastSeen">SQLite bekleniyor</small></article>
-      <article class="metric"><span class="metric-label">Fee-floor ekranları</span><strong id="candidateCount">—</strong><small id="candidateWindow">son 60 sn</small></article>
-      <article class="metric"><span class="metric-label">Quote-backed aday</span><strong id="quoteBackedCount">—</strong><small>benzersiz candidate key</small></article>
-      <article class="metric"><span class="metric-label">Pozitif paper aday</span><strong id="positiveCount">—</strong><small id="positiveRate">oran —</small></article>
+      <article class="metric"><span class="metric-label">Same-block truth</span><strong id="candidateCount">—</strong><small id="candidateWindow">son 60 sn</small></article>
+      <article class="metric"><span class="metric-label">Closed-cycle quoted</span><strong id="quoteBackedCount">—</strong><small>canonical closed-cycle quote</small></article>
+      <article class="metric"><span class="metric-label">Verified paper positive</span><strong id="positiveCount">—</strong><small id="positiveRate">oran —</small></article>
       <article class="metric"><span class="metric-label">İlk quote medyan / p95</span><strong id="quoteLatencyMetric">—</strong><small>discovery → tamamlanma</small></article>
       <article class="metric"><span class="metric-label">RPC medyan / p95</span><strong id="rpcMetric">—</strong><small>ms</small></article>
     </section>
 
+    <section class="panel run-compare">
+      <div>
+        <span class="kicker">RUN BENCHMARK</span>
+        <strong id="currentRunBenchmark">Current —</strong>
+        <small id="currentRunMeta">—</small>
+      </div>
+      <div class="run-arrow">→</div>
+      <div>
+        <span class="kicker">PREVIOUS RUN</span>
+        <strong id="previousRunBenchmark">Previous —</strong>
+        <small id="previousRunMeta">—</small>
+      </div>
+    </section>
+
     <section class="spotlight panel" id="spotlight">
       <div>
-        <span class="kicker">LATEST POSITIVE QUOTE</span>
-        <h2 id="spotlightRoute">Pozitif paper quote bekleniyor</h2>
+        <span class="kicker">LATEST VERIFIED POSITIVE</span>
+        <h2 id="spotlightRoute">Verified pozitif cycle bekleniyor</h2>
         <p id="spotlightMeta">Amount-sensitive quote oluştuğunda burada özetlenecek.</p>
       </div>
       <div class="spotlight-value">
@@ -74,7 +93,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Zaman</th><th>Token</th><th>Rota</th><th>Spread</th><th>First probe</th><th>Latest net</th><th>Best observed</th><th>Quote</th><th>Blok</th></tr>
+            <tr><th>Zaman</th><th>Token</th><th>Rota</th><th>Base</th><th>Hop</th><th>Truth spread</th><th>First probe</th><th>Latest net</th><th>Best observed</th><th>Quote</th><th>Blok</th></tr>
           </thead>
           <tbody id="opportunities"></tbody>
         </table>

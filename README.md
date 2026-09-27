@@ -1,12 +1,33 @@
-# Arb Radar v0.7
+# Arb Radar v0.8 — Economic Truth Engine
 
-Paper-only research radar for cross-market price dislocations in Par launches on Robinhood Chain. No credentials, wallet, signing, transaction submission, or mainnet execution are implemented.
+Paper-only research radar for Par multi-market dislocations on Robinhood Chain. The application has no wallet, private key, signer, transaction submission, or automated trading path.
 
-All P&L is paper/theoretical. Last-trade screening is never executable profit. `rpc-simulation` quotes include amount-sensitive buy/sell and reference routing at one block; they still do not prove atomic execution, future inclusion, or realized returns.
+v0.8 changes the research question from **"do two indexer prices look far apart?"** to **"does one closed cycle, starting and ending in the same base asset, remain positive when canonical onchain state and an amount-sensitive quote are used?"**
+
+## What is verified in v0.8
+
+The indexer is used for discovery and immutable/curve metadata only. It is not the source of executable price truth.
+
+For each recent multi-market launch, the engine:
+
+1. loads typed Par market and reference-route metadata,
+2. pins one canonical Robinhood block for screening,
+3. builds directed closed cycles between market pairs,
+4. removes any common reference-route prefix so the cycle is not forced to ETH,
+5. reads V4 pool state from Robinhood's canonical Uniswap StateView at that block,
+6. computes the fee-aware infinitesimal cycle edge from those same-block states,
+7. admits only hookless all-V4 cycles to the verified quote path,
+8. first-probes the cycle at the **current** block with one canonical V4Quoter multi-hop quote,
+9. sizes with exact quotes, using an analytical constant-product optimum only as a seed when strict assumptions hold,
+10. records lifecycle, run identity, RPC latency and paper P&L in SQLite.
+
+A dashboard row is **Verified Positive** only when a quote is marked `verifiedClosedCycle=true` and the same-base exact quote remains positive after the explicit research costs. Legacy/indexer-only positives cannot become green.
+
+This is still paper evidence. It does not prove transaction inclusion, atomic-executor gas, realized profit, or future opportunity persistence.
 
 ## Run
 
-Requires Node >=22.13 (built-in SQLite) and Git for the pinned SDK dependency.
+Requires Node >=22.13 and Git for the pinned Par SDK dependency.
 
 ```bash
 npm ci
@@ -19,104 +40,122 @@ npm run replay
 npm run sequencer
 ```
 
-`start` performs one public read-only scan; `watch` repeats after each scan. `dev` runs the paper radar watch process together with the local read-only dashboard at `http://127.0.0.1:4173`. `dashboard` opens only the dashboard against an existing SQLite database. `replay` is offline and reproduces the committed LONG5 report. `sequencer` observes for 15 seconds by default and exits. Tests require no network or secrets. CI checks Node 22 and 24.
+- `npm start`: one read-only economic-truth scan.
+- `npm run watch`: repeated scans.
+- `npm run dev`: radar watch + local dashboard.
+- `npm run dashboard`: dashboard only, using an existing SQLite file.
+- `npm run replay`: offline LONG5 historical screening replay.
+- `npm run sequencer`: bounded already-ordered feed experiment.
 
-## Data and calculations
+Local dashboard: `http://127.0.0.1:4173`.
 
-- Typed `par-sdk` discovery filters multi-market launches; SDK metadata/routes are cached for 60 seconds (routing qualification can change).
-- Exactly N*(N-1) directed routes for N independent markets. Screens reject stale, missing, nonpositive, nonfinite and duplicate market data. Default last-trade age limit: 60 seconds.
-- Fee floor uses each leg's fee. For two 3% pools: `1 / (0.97 * 0.97) = 1.062812...`. Routing, impact and gas come later.
-- The simulation adapter makes `eth_call` and `eth_estimateGas` calls to Par's v4 router with exactly one buy market and one sell market, including their ETH conversion hops. Raw amounts stay bigint. Both legs use one block, checked again for reorgs. It does not approximate concentrated liquidity with constant-product math.
-- Repeated/shared pools and hooks are excluded: independent calls cannot reproduce their sequential state changes. Unsupported state overrides/reverts produce an unavailable quote, never a last-price fallback.
-- Coinbase ETH/USD is a public valuation input, with retrieval time and source saved; it is not an executable FX quote. v0.5 creates the valuation lazily on the first real probe and shares that single promise across the entire tick, so concurrent candidates do not trigger duplicate valuation requests. Valuations older than 60 seconds are rejected.
-- Paper net = quoted output - input - gas - extra allowance - safety margin. v0.6 persists this decomposition for every numeric quote. The router output already includes pool fees, routing and price impact; those embedded effects are **not** independently observable here and are not fabricated as separate fee/slippage numbers. Gas uses the sum of both router estimates plus 20%. The explicit extra allowance is $0.05; the safety margin is 1% of output. These are research assumptions, not a verified atomic/L1 cost bound. Capital must cover input, gas and the extra allowance. Search remains the same eight-size grid and is still not a proof of a global optimum. v0.7 does **not** reduce the grid or add early-stop heuristics; independent grid quotes at the same fixed block are evaluated with bounded `SIZING_QUOTE_CONCURRENCY`, preserving the same candidate set while reducing wall-clock time.
-- Candidate lifecycle targets are 0/100/250/500/1000ms from the original qualifying screen (`discoveredAtMs`). v0.6 profiles queue delay, preparation, first-quote call duration, sizing-barrier wait, sizing-slot wait and sizing execution separately while preserving the original discovery-relative clock. v0.5 uses a staged scheduler: qualifying candidates are priority-ranked, all eligible first probes run under bounded `PROBE_CONCURRENCY`, and exhaustive sizing waits until the first-probe stage has settled. `firstExecutableQuoteStartedMs`/`firstExecutableQuoteCompletedMs`, `sizingStartedMs`/`sizingCompletedMs`, and post-sizing lifecycle start remain anchored to the original discovery clock. Candidates that exceed `CANDIDATE_MAX_QUEUE_MS` before entering the probe stage are recorded as stale drops and never receive a fake executable quote. Later samples retain the same probe input for comparable decay; the optimizer result is reported separately. Actual start/completion times and `deadlineMissedByMs` expose missed targets instead of resetting t0. Quote completion does not prove capture or inclusion. No subsecond capture capability is claimed.
-- SQLite records launches, market snapshots, screens, quotes/errors, lifecycle, RPC latency, sequencer observations and `radar_runtime` scheduler telemetry. Every row has timestamp/source/block columns; a null block explicitly means the source did not supply one. Bigints are decimal strings in JSON. No current head is falsely attached to indexer data.
+## Economic truth model
+
+### Closed-cycle routing
+
+For a directed market pair the engine searches for a common base along the two Par reference routes. A cycle can therefore be:
+
+`BASE -> quoteCheap -> Par token -> quoteExpensive -> BASE`
+
+rather than always:
+
+`ETH -> ... -> quoteCheap -> token -> quoteExpensive -> ... -> ETH`.
+
+The structural selector prefers an all-V4 cycle and then fewer hops. Verified quoting currently requires every hop to be V4 and hookless. Cycles containing V3 hops or hooks remain outside the verified-green path rather than being approximated.
+
+### Same-block screening
+
+Screening state comes from canonical V4 StateView reads at one block. For each V4 pool the engine reads slot0 and active liquidity and applies Uniswap v4's directional protocol-fee + LP-fee composition. The indexer's `lastPriceEth` is not used to decide whether a v0.8 opportunity is executable.
+
+The screen is infinitesimal/marginal only. It is a cheap onchain filter, not a profit quote.
+
+### Exact amount-sensitive quote
+
+The first executable probe uses the deployed Robinhood V4Quoter as one multi-hop closed-cycle quote. The quote starts and ends in the same raw base asset, so no nominal cross-asset comparison is treated as profit.
+
+Screen block and quote block are intentionally different concepts:
+- the screen records when an edge was observed;
+- the first probe quotes the latest block when the probe actually starts;
+- sizing pins one block for all amount comparisons in that sizing pass.
+
+This prevents a stale profitable screen from being presented as a current executable result.
+
+### Sizing
+
+When both Par pools still have active liquidity exactly equal to Par's locked liquidity and the indexer supplied valid `phantomQuote`, `quoteRaised` and `tokensOnCurve` metadata, a two-pool constant-product closed form proposes a size. That analytical result is **only a seed**. The engine exact-quotes 75%, 100% and 125% around it.
+
+If those strict assumptions do not hold, or the seeded quotes do not produce an accepted result, the engine falls back to the existing deterministic eight-size exact quote grid. Analytical math never creates a green result by itself.
+
+## Paper cost model
+
+For an exact closed-cycle quote:
+
+`paper net = base output value - base input value - research gas proxy - $0.05 allowance - 1% output safety margin`
+
+Current gas handling uses the V4Quoter gas estimate with a 20% research buffer and the current gas price, valued through ETH/USD. This is **not** a deployed atomic executor gas measurement and is deliberately labeled as an assumption.
+
+Coinbase ETH/USD is used only to report common USD values. A non-ETH base is valued at the same canonical block through Par's onchain QuotePricer and then combined with ETH/USD. The actual arbitrage quote itself remains same-base raw units.
+
+## Run-isolated measurement
+
+Every process creates:
+- `runId`
+- `engineVersion`
+- `runStartedAtMs`
+
+They are persisted across route screens, executable quotes, lifecycle rows, RPC samples and runtime telemetry. The dashboard defaults to **Current run**, can select a recent run explicitly, or show all runs.
+
+The current-run funnel is counted directly in SQLite by distinct candidate key; it is not limited by the dashboard's 5,000-row display/analysis cap.
+
+## Dashboard semantics
+
+The v0.8 funnel is:
+
+**Same-block truth -> Closed-cycle quoted -> Verified paper positive**
+
+The table also exposes:
+- base asset,
+- hop count,
+- truth spread,
+- first probe,
+- latest/best paper net,
+- block,
+- engine/truth metadata internally.
+
+"Verified" means verified by the v0.8 closed-cycle research path, not verified future execution or realized return.
 
 ## Configuration
 
 | Variable | Default | Purpose |
-|---|---|---|
-| PAR_API_BASE | https://api.par.family | Public indexer |
-| ROBINHOOD_RPC_URL | https://rpc.mainnet.chain.robinhood.com | Read-only RPC |
-| ROBINHOOD_FEED_URL | wss://feed.mainnet.chain.robinhood.com | Already-ordered feed |
-| RADAR_DB | data/radar.sqlite | SQLite output |
-| POLL_MS | 1000 | Delay between complete scans |
-| PAPER_CAPITAL_USD | 100 | Paper budget including costs |
-| MAX_CANDIDATE_TRADE_USD | 100 | Maximum input |
-| MIN_NET_PROFIT_USD | 0.05 | Sizing selection threshold |
-| RECENT_WINDOW_SECONDS | 60 | Maximum screening price age |
-| PROBE_CONCURRENCY | 2 | Maximum simultaneous first-probe phases, clamped 1–8 |
-| SIZING_CONCURRENCY | 1 | Maximum simultaneous candidate sizing phases, clamped 1–4 |
-| SIZING_QUOTE_CONCURRENCY | 2 | Maximum simultaneous fixed-block amount quotes inside one sizing grid, clamped 1–4 |
-| CANDIDATE_MAX_QUEUE_MS | 2500 | Drop a queued candidate before probe if its discovery age exceeds this threshold |
-| FEED_SECONDS | 15 | Bounded sequencer experiment, max 300 |
-| DASHBOARD_HOST | 127.0.0.1 | Local dashboard bind address |
-| DASHBOARD_PORT | 4173 | Local dashboard port |
+|---|---:|---|
+| `PAR_API_BASE` | `https://api.par.family` | Public discovery/indexer metadata |
+| `ROBINHOOD_RPC_URL` | public Robinhood mainnet RPC | Read-only canonical RPC |
+| `ROBINHOOD_FEED_URL` | public sequencer feed | Already-ordered research feed |
+| `RADAR_DB` | `data/radar.sqlite` | SQLite output |
+| `POLL_MS` | 1000 | Delay between completed watch scans |
+| `PAPER_CAPITAL_USD` | 100 | Total paper budget |
+| `MAX_CANDIDATE_TRADE_USD` | 100 | Maximum quote input |
+| `MIN_NET_PROFIT_USD` | 0.05 | Accepted paper-net threshold |
+| `PROBE_CONCURRENCY` | 2 | Parallel first-probe phases, max 8 |
+| `SIZING_CONCURRENCY` | 1 | Parallel candidate sizing phases, max 4 |
+| `SIZING_QUOTE_CONCURRENCY` | 2 | Fixed-block sizing quote concurrency, max 4 |
+| `CANDIDATE_MAX_QUEUE_MS` | 2500 | Drop before expensive probe when stale in queue |
+| `TRUTH_LAUNCH_LIMIT` | 8 | Recent launches examined per truth scan, max 30 |
+| `TRUTH_SCAN_CONCURRENCY` | 2 | Concurrent launch truth scans, max 4 |
+| `DASHBOARD_HOST` | `127.0.0.1` | Local dashboard bind |
+| `DASHBOARD_PORT` | 4173 | Local dashboard port |
 
-HTTP retry/backoff is bounded and honors Retry-After (capped at 10 seconds). Public endpoint errors are recorded; paid keys are not required. Single-scan discovery failure exits nonzero; watch mode continues. Ctrl+C stops watch after the current scan.
+## Safety and research boundaries
 
-## Research results and limits
+The main RPC transport allowlists read methods only. No secret configuration, account, signing or transaction broadcasting is required by the application.
 
-[LONG5 replay](docs/LONG5_REPLAY.md) explicitly targets the original research address `0x9bbd4d06ac29d8900b34998a56e96a33c16220f0` regardless of its indexed symbol (currently Xl5). Its latest 2000 trades provide partial history, not complete launch-era coverage. Five other LONG5 tokens are labeled as a comparison cohort and never substituted for an unavailable original target. Historical executable sizes, P&L and subsecond half-lives remain unknown; no $100 capture conclusion is inferred. `node scripts/capture-original-long5.mjs` refreshes the original fixture from public read-only endpoints; `npm run replay` uses saved fixtures offline.
+The important remaining limits are:
 
-The sequencer experiment verifies the Nitro feed signature against a pinned public authority, decodes signed transaction batches, marks next-block candidates, and checks a log-derived shadow price against canonical RPC slot0. Gaps/reorgs invalidate the shadow cache. Calldata alone never updates pool prices. This is a limited reconciliation experiment, not a full speculative EVM or a demonstrated latency advantage. The feed is already ordered, not a public mempool. Authority rotation requires re-verification and a code update; failures are rejected.
+- only hookless all-V4 closed cycles are eligible for verified quoting;
+- V4Quoter gas is a research proxy rather than atomic executor gas;
+- quote completion is not transaction inclusion;
+- public RPC latency/rate limiting can dominate short-lived opportunities;
+- a positive sample does not establish strategy-level expectancy;
+- LONG5 historical data still lacks historical executable same-block state needed to reconstruct past closed-cycle P&L honestly.
 
-See [architecture](docs/ARCHITECTURE.md), [audit](docs/V0.2_AUDIT.md), and [handoff specification](docs/ASTRA_HANDOFF.md).
-
-
-## Local dashboard
-
-The v0.7 dashboard is a read-only view over `RADAR_DB`. It does not call the chain from the browser and exposes only bounded local GET endpoints:
-
-- `/api/health`
-- `/api/snapshot?limit=120&windowSeconds=60`
-
-It shows a true time-windowed funnel from fee-floor screens → quote-backed candidates → positive paper candidates, groups repeated optimizer/requote rows by candidate key, and keeps screen spread visually separate from quote-backed paper P&L. The dashboard adds positive/nonpositive/unavailable filters, token/route search, sorting, a latest-positive summary, paper P&L trace, discovery-to-first-quote median/p95, sizing median/p95, missed lifecycle deadline rate/p95, RPC latency, and lifetime dataset counts. Windows are bounded to 10 seconds–15 minutes and the analysis scan is capped at 5,000 rows per table with a visible truncation warning. A missing database renders an empty waiting state instead of creating research rows. The HTTP server binds to localhost by default.
-
-
-### v0.4 metric semantics
-
-- **Fee-floor screens**: qualifying last-price screens inside the selected time window. This is not executable profit.
-- **Quote-backed candidate**: a unique candidate key with at least one amount-sensitive numeric RPC simulation inside the selected time window.
-- **Positive paper candidate**: a quote-backed candidate with at least one positive net paper quote in the selected time window. Its latest quote may already be nonpositive; the table shows both latest net and best observed net.
-- **Latest positive quote**: the most recent individual quote row with positive net paper P&L in the selected window.
-- **Deadline miss rate**: lifecycle samples whose quote started after their original discovery-relative target. A completed quote is still not transaction inclusion or realized capture.
-
-The dashboard can pause browser refresh without stopping the radar process. Changing the analysis window triggers a fresh bounded snapshot.
-
-
-## v0.5 scheduler semantics
-
-The scheduler is a research-throughput layer, not an execution engine. Candidate priority is deterministic: higher fee-adjusted screening return first, then earlier discovery time, then stable key order. Probe and sizing concurrency are independently bounded. A sizing slot is never opened until the first-probe stage for the current queue has settled, preventing one candidate's eight-size optimizer from blocking every later candidate's first executable observation.
-
-The latest completed tick is written to `radar_runtime` with queue size, stale drops, probe/sizing starts and completions, observed peak concurrency, tick duration, configured queue age limit, and actual valuation fetch count. The local dashboard exposes these fields under **Candidate throughput**. This telemetry measures observation throughput only; it does not imply transaction inclusion speed.
-
-
-## v0.6 cost and latency semantics
-
-For every numeric executable quote, the dashboard can show:
-
-`gross quoted edge = router output - input`
-
-`paper net = gross quoted edge - gas - extra allowance - safety margin`
-
-A negative result is classified by the first explicit stage that erases a previously positive quoted edge. If router output is already below input, the route is labeled negative before explicit research costs. Pool fees, routing and price impact remain embedded in router output and are not presented as separately measured values.
-
-The P&L chart now separates **first probe** from **best observed candidate** values so optimizer/lifecycle requotes do not appear as a single stream of realized gains or losses.
-
-The pipeline profiler aggregates median/p95 for queue delay, preparation, first quote, sizing barrier, sizing queue and sizing execution. First-probe simulation profiles additionally time block read, buy simulation, sell simulation, buy/sell gas estimation, gas-price read and block confirmation. These are local observation timings only; they do not measure transaction inclusion.
-
-
-## v0.6.1 dashboard window semantics
-
-Dashboard analysis windows are candidate-discovery windows. A quote or lifecycle row written later does not pull an older candidate into the current 60s/5m/15m funnel. New rows persist `discoveredAtMs`; legacy standard candidate keys fall back to their timestamp suffix. This keeps fee-floor screens, quote-backed candidates, P&L traces and lifecycle profiler summaries on the same discovery-time basis.
-
-
-## v0.7 read-only parallelism
-
-v0.7 targets wall-clock latency without changing search coverage. The optimizer still evaluates the same deterministic eight input sizes at one fixed block, but up to `SIZING_QUOTE_CONCURRENCY` independent quote simulations can be in flight at once. Results are placed back in original size order before the best candidate is selected, so completion order cannot change the result.
-
-Inside one executable quote, buy and sell simulations remain sequential because the sell amount depends on the buy output. After the sell simulation is known, the buy gas estimate, sell gas estimate and gas-price read are independent read-only calls and run concurrently. Canonical block confirmation remains after those reads. Any rejected sizing quote still fails the sizing operation closed; v0.7 does not silently skip RPC failures.
-
-This increases RPC concurrency, so the default is intentionally conservative at 2 sizing quotes per candidate. The dashboard exposes the configured sizing quote concurrency next to candidate throughput so latency improvements can be compared against RPC error/rate-limit behavior.
+See [architecture](docs/ARCHITECTURE.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).

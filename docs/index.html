@@ -3,35 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Arb Radar</title>
+  <title>Arb Radar · v0.8 Economic Truth</title>
   <style>
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#0b0d10;color:#eef2f7}
-    body{margin:0}.wrap{max-width:920px;margin:auto;padding:56px 24px}
+    body{margin:0}.wrap{max-width:980px;margin:auto;padding:56px 24px}
     .badge{display:inline-block;padding:6px 10px;border:1px solid #313944;border-radius:999px;color:#aab6c4;font-size:13px}
     h1{font-size:clamp(42px,8vw,78px);line-height:.95;margin:22px 0}
-    p{color:#aab6c4;line-height:1.65;font-size:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:34px}
-    .card{border:1px solid #242b34;border-radius:18px;padding:20px;background:#11151a}.card strong{display:block;font-size:26px;margin-bottom:7px}.ok{color:#7ee787}
+    h2{margin-top:40px}p{color:#aab6c4;line-height:1.65;font-size:18px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:34px}
+    .card{border:1px solid #242b34;border-radius:18px;padding:20px;background:#11151a}
+    .card strong{display:block;font-size:25px;margin-bottom:7px}.ok{color:#7ee787}.muted{color:#8b949e}
     code{color:#d2a8ff}.note{margin-top:34px;padding:18px 20px;border-left:3px solid #d29922;background:#14120c}
+    a{color:#7ee787}
   </style>
 </head>
 <body>
   <main class="wrap">
-    <span class="badge">v0.3 · PAPER ONLY · LOCAL LIVE DASHBOARD</span>
+    <span class="badge">v0.8 · ECONOMIC TRUTH ENGINE · PAPER ONLY</span>
     <h1>Arb Radar</h1>
-    <p>Research radar for cross-market price dislocations in Par multi-market launches on Robinhood Chain.</p>
+    <p>Read-only research radar for Par multi-market dislocations on Robinhood Chain. v0.8 evaluates closed cycles from canonical same-block state instead of treating indexer last prices as executable truth.</p>
+
     <section class="grid">
-      <article class="card"><strong class="ok">20 routes</strong><span>for a five-market launch</span></article>
-      <article class="card"><strong>~6.28%</strong><span>fee-only floor for two 3% legs</span></article>
-      <article class="card"><strong>Read-only</strong><span>no private key, signer, transaction submission or mainnet execution</span></article>
+      <article class="card"><strong class="ok">Same-block</strong><span>V4 StateView truth screen</span></article>
+      <article class="card"><strong>Closed cycle</strong><span>same base in and out</span></article>
+      <article class="card"><strong>48 / 48</strong><span>tests green on Node 22 and 24</span></article>
+      <article class="card"><strong>Read-only</strong><span>no key, signer or transaction submission</span></article>
     </section>
-    <div class="note"><strong>Research boundary</strong><br>All P&amp;L remains paper/theoretical. Last-price spreads are screening signals, not executable-profit claims. v0.2 includes amount-sensitive v4 router simulations, SQLite observations and opportunity-lifecycle measurement. Atomic execution and real capture are unproven.</div>
-    <h2>Measurement status</h2>
-    <p>The first quote is attempted before exhaustive sizing. Discovery-to-first-quote latency, sizing duration and post-sizing observations are reported separately. Lifecycle deadlines stay anchored to the original discovery time; missed deadlines are recorded. No subsecond capture capability has been demonstrated.</p>
-    <h2>Original LONG5 replay target</h2>
-    <p style="overflow-wrap:anywhere"><code>0x9bbd4d06ac29d8900b34998a56e96a33c16220f0</code></p>
-    <p>The original target is identified by address, regardless of its current symbol. Other LONG5 symbols are a comparison cohort only. Historical executable P&amp;L and half-life remain unknown without amount-sensitive historical state.</p>
-    <p><a style="color:#7ee787" href="LONG5_REPLAY.md">Replay report</a> · <a style="color:#7ee787" href="LONG5_REPLAY.json">Replay data</a></p>
-    <h2>v0.3 local dashboard</h2><p>The live research dashboard now runs locally from the SQLite research database. After pulling <code>main</code>, run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. It shows executable paper quotes, discovery-to-first-quote timing, sizing duration and RPC latency. This GitHub Pages site remains a static project-status page and does not expose your local research database.</p><p>The sequencer feed reports already-ordered blocks, not a public mempool. No wallet, signer or transaction submission exists.</p>
+
+    <div class="note"><strong>Green means something specific.</strong><br>
+      A candidate can be marked Verified Positive only after a hookless all-V4 closed cycle is amount-quoted by the canonical Robinhood V4Quoter and remains positive after explicit paper costs. A last-price spread, marginal StateView edge or analytical sizing seed cannot make a candidate green by itself.
+    </div>
+
+    <h2>v0.8 pipeline</h2>
+    <p>Indexer → typed launch metadata → one canonical screen block → common-base route compression → V4 StateView → fee-aware marginal edge → current-block V4Quoter probe → exact sizing → lifecycle and run-isolated SQLite telemetry.</p>
+
+    <h2>Live integration status</h2>
+    <p>The branch live-smoke workflow requires zero truth-scan failures and separately forces one real supported closed cycle through the canonical V4Quoter. The latest recorded integration sample completed a 3-hop ETH cycle at block <code>73861649</code>. Its output was below input, so it was explicitly recorded as <strong>not profitable</strong>. The purpose is integration verification, not a trading claim.</p>
+
+    <h2>Measurement boundary</h2>
+    <p>V4Quoter gas is still a research proxy rather than deployed atomic-executor gas. Quote completion is not transaction inclusion. Public RPC latency can dominate short-lived dislocations. Historical LONG5 executable P&amp;L remains unknown without historical canonical state.</p>
+
+    <h2>Local dashboard</h2>
+    <p>The live dashboard stays local and reads the local SQLite database. After pulling the project, run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. This GitHub Pages page is only a static project-status surface.</p>
+
+    <p><a href="V0.8_AUDIT.md">v0.8 audit</a> · <a href="ARCHITECTURE.md">architecture</a> · <a href="LONG5_REPLAY.md">LONG5 replay</a></p>
   </main>
 </body>
 </html>
