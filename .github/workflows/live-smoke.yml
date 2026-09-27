@@ -2,12 +2,13 @@ name: Live Smoke
 
 on:
   push:
-    branches: [v0.8-economic-truth]
+    branches: [main]
     paths:
       - 'src/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/live-smoke.yml'
+      - 'scripts/v08-live-cycle-smoke.mjs'
   workflow_dispatch:
 
 permissions:
