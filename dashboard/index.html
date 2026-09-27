@@ -16,6 +16,10 @@
       </div>
       <div class="top-actions">
         <span class="pill safe">READ ONLY</span>
+        <select class="pill run-select" id="runSelect" aria-label="Radar run seçimi">
+          <option value="current">Current run</option>
+          <option value="all">Tüm runlar</option>
+        </select>
         <button class="pill button" id="refreshToggle" type="button">Otomatik yenileme: açık</button>
         <span class="pill" id="updated">Veri bekleniyor</span>
       </div>
@@ -23,6 +27,7 @@
 
     <section class="warning">
       <strong>Paper-only research.</strong>
+      <span id="runSummary">Current run bekleniyor.</span><br>
       Spread yalnızca tarama sinyalidir. “Pozitif” etiketi, son analiz penceresinde en az bir amount-sensitive RPC quote’unun maliyetler sonrası pozitif paper sonuç vermesi anlamına gelir; gerçek işlem veya gerçekleşmiş kâr değildir.
     </section>
 
@@ -33,6 +38,20 @@
       <article class="metric"><span class="metric-label">Pozitif paper aday</span><strong id="positiveCount">—</strong><small id="positiveRate">oran —</small></article>
       <article class="metric"><span class="metric-label">İlk quote medyan / p95</span><strong id="quoteLatencyMetric">—</strong><small>discovery → tamamlanma</small></article>
       <article class="metric"><span class="metric-label">RPC medyan / p95</span><strong id="rpcMetric">—</strong><small>ms</small></article>
+    </section>
+
+    <section class="panel run-compare">
+      <div>
+        <span class="kicker">RUN BENCHMARK</span>
+        <strong id="currentRunBenchmark">Current —</strong>
+        <small id="currentRunMeta">—</small>
+      </div>
+      <div class="run-arrow">→</div>
+      <div>
+        <span class="kicker">PREVIOUS RUN</span>
+        <strong id="previousRunBenchmark">Previous —</strong>
+        <small id="previousRunMeta">—</small>
+      </div>
     </section>
 
     <section class="spotlight panel" id="spotlight">
