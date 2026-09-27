@@ -101,6 +101,6 @@ export async function runDepthAwareSizing<Q,F>(options:{
     failures,
     bestQuote:finite[0]?.quote ?? null,
     firstLiquidityFailureUsd,
-    stoppedReason,
+    stoppedReason:firstLiquidityFailureUsd!==null && stoppedReason==='max-reached' ? 'liquidity-boundary' : stoppedReason,
   };
 }
