@@ -81,6 +81,8 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     }},{timestampMs:at+6,blockNumber:null,source:'fixture'});
     store.record('opportunity_lifecycle','opp-1',{targetMs:0,deadlineMissedByMs:0,netProfitUsd:.75},{timestampMs:at+7,blockNumber:123n,source:'fixture'});
     store.record('opportunity_lifecycle','opp-1',{targetMs:100,deadlineMissedByMs:120,netProfitUsd:.2},{timestampMs:at+8,blockNumber:125n,source:'fixture'});
+    store.record('opportunity_lifecycle','opp-depth',{discoveredAtMs:at+1,depthFailure:{phase:'probe-or-lifecycle',inputUsd:.01,kind:'not-enough-liquidity',poolId:'0x'+'11'.repeat(32)}},{timestampMs:at+8,blockNumber:125n,source:'fixture'});
+    store.record('opportunity_lifecycle','opp-depth',{discoveredAtMs:at+1,depthFailure:{phase:'sizing-depth',inputUsd:.03,kind:'not-enough-liquidity',poolId:'0x'+'11'.repeat(32)}},{timestampMs:at+9,blockNumber:125n,source:'fixture'});
     store.record('opportunity_lifecycle','0xold:0:1:old-timing',{
       measurementTiming:{discoveredAtMs:at-61_000,queueDelayMs:99999,preparationDurationMs:99999,
         discoveryToFirstQuoteCompletedMs:99999,firstQuoteDurationMs:99999,sizingDurationMs:99999}
@@ -106,6 +108,8 @@ test('dashboard uses the time window for quality metrics and keeps display limit
     assert.equal(snapshot.radar.positiveExecutableQuotes,1);
     assert.equal(snapshot.radar.nonpositiveExecutableQuotes,1);
     assert.equal(snapshot.radar.unavailableQuotes,1);
+    assert.equal(snapshot.radar.depthRejectedCandidates,1);
+    assert.equal(snapshot.radar.notEnoughLiquidityFailures,2);
     assert.equal(snapshot.radar.positiveRatePct,50);
     assert.equal(snapshot.radar.uniqueTokens,1);
     assert.equal(snapshot.radar.medianRpcLatencyMs,30);
