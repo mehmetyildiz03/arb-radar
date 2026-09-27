@@ -81,6 +81,8 @@ export interface DashboardSnapshot {
     positiveExecutableQuotes: number;
     nonpositiveExecutableQuotes: number;
     unavailableQuotes: number;
+    depthRejectedCandidates: number;
+    notEnoughLiquidityFailures: number;
     positiveRatePct: number | null;
     uniqueTokens: number;
     medianRpcLatencyMs: number | null;
@@ -253,6 +255,23 @@ function exactFunnelCounts(db: DatabaseSync, fromMs:number, toMs:number, runId:s
     quoteBackedCandidates:Number(backed),
     positiveExecutableQuotes:Number(positive),
     unavailableQuotes:Number(unavailable),
+  };
+}
+
+function exactDepthFailureCounts(db:DatabaseSync,fromMs:number,toMs:number,runId:string|null) {
+  if(!hasTable(db,'opportunity_lifecycle')) return {depthRejectedCandidates:0,notEnoughLiquidityFailures:0};
+  const runSql=runId===null?'':" AND json_extract(payload,'$.runId') = ?";
+  const args=runId===null?[fromMs,toMs]:[fromMs,toMs,runId];
+  const rows=db.prepare(`SELECT
+      COUNT(DISTINCT observation_key) AS candidates,
+      SUM(CASE WHEN json_extract(payload,'$.depthFailure.kind')='not-enough-liquidity' THEN 1 ELSE 0 END) AS not_enough
+    FROM opportunity_lifecycle
+    WHERE json_valid(payload)=1
+      AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL),timestamp_ms) BETWEEN ? AND ?
+      AND json_type(payload,'$.depthFailure')='object'${runSql}`).get(...args) as {candidates?:number;not_enough?:number}|undefined;
+  return {
+    depthRejectedCandidates:Number(rows?.candidates??0),
+    notEnoughLiquidityFailures:Number(rows?.not_enough??0),
   };
 }
 
@@ -585,7 +604,7 @@ export function buildDashboardSnapshot(
     runComparison:{current:null,previous:null},
     radar: {
       qualifyingScreens:0,quoteBackedCandidates:0,positiveExecutableQuotes:0,nonpositiveExecutableQuotes:0,
-      unavailableQuotes:0,positiveRatePct:null,uniqueTokens:0,medianRpcLatencyMs:null,p95RpcLatencyMs:null,
+      unavailableQuotes:0,depthRejectedCandidates:0,notEnoughLiquidityFailures:0,positiveRatePct:null,uniqueTokens:0,medianRpcLatencyMs:null,p95RpcLatencyMs:null,
       medianFirstQuoteMs:null,p95FirstQuoteMs:null,medianSizingMs:null,p95SizingMs:null,
       lifecycleDeadlineSamples:0,missedLifecycleDeadlines:0,missedDeadlineRatePct:null,p95DeadlineMissMs:null,
       latestPositiveOpportunity:null,
@@ -651,6 +670,7 @@ export function buildDashboardSnapshot(
     }
 
     const funnel=exactFunnelCounts(db,fromMs,generatedAtMs,selectedRunId);
+    const depthFailures=exactDepthFailureCounts(db,fromMs,generatedAtMs,selectedRunId);
     const qualifyingScreens=funnel.qualifyingScreens;
 
     const tokens = new Set<string>();
@@ -809,6 +829,8 @@ export function buildDashboardSnapshot(
         positiveExecutableQuotes,
         nonpositiveExecutableQuotes,
         unavailableQuotes,
+        depthRejectedCandidates:depthFailures.depthRejectedCandidates,
+        notEnoughLiquidityFailures:depthFailures.notEnoughLiquidityFailures,
         positiveRatePct:pct(positiveExecutableQuotes,quoteBackedCandidates),
         uniqueTokens:tokens.size,
         medianRpcLatencyMs:percentile(durations,0.5),
