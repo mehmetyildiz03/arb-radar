@@ -62,6 +62,7 @@ export interface CycleTruth {
   infinitesimalMultiplier: number;
   infinitesimalEdgeBps: number;
   passesInfinitesimalEdge: boolean;
+  activeLiquidityReady: boolean;
 }
 
 function same(a: Address, b: Address): boolean {
@@ -276,6 +277,10 @@ export function cycleTruthFromStates(
   blockNumber: bigint,
 ): CycleTruth {
   if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
+  const activeLiquidityReady=cycle.hops.every(hop=>{
+    const state=states[poolIdOf(hop.key).toLowerCase()];
+    return !!state && state.liquidity>0n;
+  });
   const infinitesimalMultiplier=cycleSpotMultiplier(cycle,states,true);
   return {
     blockNumber,
@@ -283,7 +288,8 @@ export function cycleTruthFromStates(
     states,
     infinitesimalMultiplier,
     infinitesimalEdgeBps:(infinitesimalMultiplier-1)*10_000,
-    passesInfinitesimalEdge:infinitesimalMultiplier>1,
+    passesInfinitesimalEdge:activeLiquidityReady && infinitesimalMultiplier>1,
+    activeLiquidityReady,
   };
 }
 
