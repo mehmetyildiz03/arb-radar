@@ -242,6 +242,7 @@ async function tick(): Promise<void> {
           }catch(error){
             const failure=classifyV4QuoteError(error);
             store.record('opportunity_lifecycle',key,withRun(run,{
+              discoveredAtMs,
               depthFailure:{phase:'probe-or-lifecycle',inputUsd:trackedInput,...failure},
               verifiedClosedCycle:true,
               engine:'v0.8-economic-truth',
@@ -264,6 +265,7 @@ async function tick(): Promise<void> {
             classifyFailure:classifyV4QuoteError,
             onQuote:quote=>persistQuote(quote,'sizing-depth'),
             onFailure:failure=>store.record('opportunity_lifecycle',key,withRun(run,{
+              discoveredAtMs,
               depthFailure:{
                 phase:'sizing-depth',
                 inputUsd:failure.inputUsd,
