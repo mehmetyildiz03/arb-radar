@@ -23,6 +23,11 @@ export const stateViewAbi = parseAbi([
 
 export const v4QuoterAbi = parseAbi([
   'function quoteExactInput((address exactCurrency,(address intermediateCurrency,uint24 fee,int24 tickSpacing,address hooks,bytes hookData)[] path,uint128 exactAmount) params) returns (uint256 amountOut,uint256 gasEstimate)',
+  'error UnexpectedRevertBytes(bytes revertData)',
+  'error NotEnoughLiquidity(bytes32 poolId)',
+  'error UnexpectedCallSuccess()',
+  'error NotSelf()',
+  'error NotPoolManager()',
 ]);
 
 export interface DirectedPoolHop {
