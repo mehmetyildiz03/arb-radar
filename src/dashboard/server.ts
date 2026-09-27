@@ -43,8 +43,9 @@ const server = createServer(async (request,response)=>{
       const limit=Number.isFinite(requested) ? Math.min(500,Math.max(1,Math.floor(requested))) : 100;
       const requestedWindowSeconds=Number(url.searchParams.get('windowSeconds') ?? 60);
       const windowSeconds=Number.isFinite(requestedWindowSeconds) ? Math.min(900,Math.max(10,Math.floor(requestedWindowSeconds))) : 60;
+      const runId=(url.searchParams.get('runId') ?? 'current').trim() || 'current';
       try {
-        sendJson(response,200,buildDashboardSnapshot(databasePath,limit,Date.now(),windowSeconds*1000));
+        sendJson(response,200,buildDashboardSnapshot(databasePath,limit,Date.now(),windowSeconds*1000,runId));
       } catch (error) {
         sendJson(response,503,{paperOnly:true,error:'snapshot-unavailable',detail:String(error),at:Date.now()});
       }
