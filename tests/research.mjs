@@ -19,6 +19,10 @@ import { quoteCostBreakdown } from '../dist/research/costs.js';
 import { runStagedCandidates, sharedAsyncResource, StaleCandidateError } from '../dist/research/scheduler.js';
 import { originalReport, originalLong5 } from '../scripts/long5-target.mjs';
 import { loadConfig } from '../dist/config.js';
+import {
+  enumerateClosedCycles, bestStructuralCycle, totalSwapFeePips,
+  directionalProtocolFee, cycleSpotMultiplier, readCycleTruth, quoteClosedCycle
+} from '../dist/economic/v4Truth.js';
 
 const token = '0x1111111111111111111111111111111111111111';
 const pair = '0x2222222222222222222222222222222222222222';
@@ -404,4 +408,91 @@ test('simulation overlaps independent gas estimates and gas-price read', async (
   assert.equal(maxActive,3);
   assert.equal(q.gasUnits,240000n);
   assert.equal(q.outputUsd,120);
+});
+
+
+test('economic truth route graph removes common reference prefix and chooses the shortest all-v4 base', () => {
+  const usdg='0x4444444444444444444444444444444444444444';
+  const qa='0x5555555555555555555555555555555555555555';
+  const qb='0x6666666666666666666666666666666666666666';
+  const ethUsdg=poolKeyFor(usdg,zeroAddress,3000,60);
+  const usdgQa=poolKeyFor(qa,usdg,3000,60);
+  const usdgQb=poolKeyFor(qb,usdg,3000,60);
+  const parA=poolKeyFor(token,qa,30000,10);
+  const parB=poolKeyFor(token,qb,30000,10);
+  const meta={
+    token,kind:'multi',router,factory:router,locker:router,deployer:router,creatorFeeRecipient:router,
+    poolFee:30000,tickSpacing:10,baseFeeBps:100,creatorTaxBps:200,protocolFeeShareBps:0,launchedAt:1,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,poolKey:parA,poolId:poolIdOf(parA),tokenIsCurrency0:parA.currency0===token,positionId:1n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,poolKey:parB,poolId:poolIdOf(parB),tokenIsCurrency0:parB.currency0===token,positionId:2n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+    ],
+    routes:[
+      {buyHops:[{key:ethUsdg,v3:false},{key:usdgQa,v3:false}],sellHops:[{key:usdgQa,v3:false},{key:ethUsdg,v3:false}],qualifies:true},
+      {buyHops:[{key:ethUsdg,v3:false},{key:usdgQb,v3:false}],sellHops:[{key:usdgQb,v3:false},{key:ethUsdg,v3:false}],qualifies:true},
+    ],
+  };
+  const cycles=enumerateClosedCycles(meta,0,1);
+  const best=bestStructuralCycle(cycles);
+  assert.ok(best);
+  assert.equal(best.base.toLowerCase(),usdg);
+  assert.equal(best.hopCount,4);
+  assert.equal(best.allV4,true);
+  assert.ok(cycles.some(x=>x.base===zeroAddress&&x.hopCount===6));
+  assert.deepEqual(best.hops.map(x=>x.role),['reference','par-buy','par-sell','reference']);
+});
+
+test('v4 truth fee math matches packed protocol direction semantics', () => {
+  const packed=(500<<12)|250;
+  assert.equal(directionalProtocolFee(packed,true),250);
+  assert.equal(directionalProtocolFee(packed,false),500);
+  assert.equal(totalSwapFeePips(1000,30000),30970);
+});
+
+test('same-block v4 truth and canonical quoter operate on one closed multi-hop cycle', async () => {
+  const qa='0x5555555555555555555555555555555555555555';
+  const qb='0x6666666666666666666666666666666666666666';
+  const parA=poolKeyFor(token,qa,0,10);
+  const parB=poolKeyFor(token,qb,0,10);
+  const meta={
+    token,kind:'multi',router,factory:router,locker:router,deployer:router,creatorFeeRecipient:router,
+    poolFee:0,tickSpacing:10,baseFeeBps:0,creatorTaxBps:0,protocolFeeShareBps:0,launchedAt:1,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,poolKey:parA,poolId:poolIdOf(parA),tokenIsCurrency0:parA.currency0===token,positionId:1n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,poolKey:parB,poolId:poolIdOf(parB),tokenIsCurrency0:parB.currency0===token,positionId:2n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+    ],
+    routes:[
+      {buyHops:[{key:poolKeyFor(qa,zeroAddress,0,10),v3:false}],sellHops:[{key:poolKeyFor(qa,zeroAddress,0,10),v3:false}],qualifies:true},
+      {buyHops:[{key:poolKeyFor(qb,zeroAddress,0,10),v3:false}],sellHops:[{key:poolKeyFor(qb,zeroAddress,0,10),v3:false}],qualifies:true},
+    ],
+  };
+  const cycle=bestStructuralCycle(enumerateClosedCycles(meta,0,1));
+  assert.ok(cycle?.allV4);
+  const Q96=2n**96n;
+  const calls=[];
+  const client={
+    getBlockNumber:async()=>50n,
+    readContract:async args=>{
+      calls.push(args);
+      if(args.functionName==='getSlot0')return [Q96,0,0,0];
+      if(args.functionName==='getLiquidity')return 1000n;
+      throw Error('unexpected read');
+    },
+    simulateContract:async args=>{
+      calls.push(args);
+      return {result:[110n,123456n]};
+    },
+  };
+  const truth=await readCycleTruth(client,cycle);
+  assert.equal(truth.blockNumber,50n);
+  assert.equal(Number(truth.infinitesimalMultiplier.toFixed(12)),1);
+  const stateMap=truth.states;
+  assert.equal(Number(cycleSpotMultiplier(cycle,stateMap).toFixed(12)),1);
+  const quoted=await quoteClosedCycle(client,cycle,100n,50n);
+  assert.equal(quoted.amountOut,110n);
+  assert.equal(quoted.gasEstimate,123456n);
+  assert.equal(quoted.grossMultiplier,1.1);
+  const quoterCall=calls.find(x=>x.functionName==='quoteExactInput');
+  assert.equal(quoterCall.args[0].path.length,cycle.hops.length);
+  assert.equal(quoterCall.args[0].exactCurrency.toLowerCase(),cycle.base.toLowerCase());
 });
