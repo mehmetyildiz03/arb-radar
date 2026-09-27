@@ -710,3 +710,24 @@ test('depth-aware sizing stops larger probes and seed extras when exact gross ed
   assert.deepEqual(calls,[.01]);
   assert.equal(result.stoppedReason,'gross-nonpositive');
 });
+
+
+test('depth-aware sizing preserves the first liquidity boundary after a smaller seed refinement succeeds', async () => {
+  const calls=[];
+  const result=await runDepthAwareSizing({
+    minUsd:.01,maxUsd:1,
+    extraAmountsUsd:[.075],
+    quote:async amount=>{
+      calls.push(amount);
+      if(amount>=.1) throw {data:{errorName:'UnexpectedRevertBytes',args:['0x7a5ed734'+'22'.repeat(32)]}};
+      return {inputUsd:amount,outputUsd:amount*1.2,net:amount*.2};
+    },
+    score:q=>q.net,
+    grossPositive:q=>q.outputUsd>q.inputUsd,
+    classifyFailure:classifyV4QuoteError,
+  });
+  assert.deepEqual(calls,[.01,.03,.1,.075]);
+  assert.equal(result.firstLiquidityFailureUsd,.1);
+  assert.equal(result.stoppedReason,'liquidity-boundary');
+  assert.equal(result.bestQuote.inputUsd,.075);
+});
