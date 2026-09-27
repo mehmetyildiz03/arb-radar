@@ -97,7 +97,7 @@ function renderSelectedCandidate(){
     renderBreakdown('probe',null);renderBreakdown('best',null);return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
-  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' truth spread · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
+  setText('selectedCandidateMeta',fmtPct(item.grossSpreadPct)+' micro gross edge · '+(item.baseSymbol??'base ?')+' · '+(item.hopCount??'?')+' hop · '+(item.quoteCount??0)+' exact quote · '+ago(item.timestampMs));
   setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
