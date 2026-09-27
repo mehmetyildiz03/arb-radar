@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 const children = [];
 let stopping = false;
@@ -25,7 +26,8 @@ function shutdown(code = 0) {
   setTimeout(() => process.exit(code), 250).unref();
 }
 
-console.log('Arb Radar v0.3 dev — PAPER ONLY');
+const packageVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+console.log(`Arb Radar v${packageVersion} dev — PAPER ONLY`);
 console.log('Starting paper radar watch + local dashboard…');
 start('radar', ['dist/index.js', '--watch']);
 start('dashboard', ['dist/dashboard/server.js']);
