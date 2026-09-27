@@ -104,6 +104,17 @@ export interface DashboardSnapshot {
     simulation: Record<string, { medianMs: number | null; p95Ms: number | null; samples: number }>;
     dominantSimulationStep: { key: string; medianMs: number } | null;
   };
+  run: {
+    mode: 'current' | 'specific' | 'all';
+    selectedRunId: string | null;
+    currentRunId: string | null;
+    engineVersion: string | null;
+    recentRuns: Array<{ runId: string; engineVersion: string; runStartedAtMs: number }>;
+  };
+  runComparison: {
+    current: { runId: string; engineVersion: string; lastTickDurationMs: number | null } | null;
+    previous: { runId: string; engineVersion: string; lastTickDurationMs: number | null } | null;
+  };
   runtime: {
     lastTickAtMs: number | null;
     tickDurationMs: number | null;
@@ -123,7 +134,7 @@ export interface DashboardSnapshot {
   };
 }
 
-const tableNames = ['launches','market_snapshots','route_screens','executable_quotes','opportunity_lifecycle','rpc_latency_samples','radar_runtime'] as const;
+const tableNames = ['launches','market_snapshots','route_screens','executable_quotes','opportunity_lifecycle','rpc_latency_samples','radar_runtime','radar_runs'] as const;
 type TableName = typeof tableNames[number];
 const DEFAULT_WINDOW_MS = 60_000;
 const ANALYSIS_ROW_CAP = 5_000;
@@ -167,6 +178,84 @@ function countSince(db: DatabaseSync, table: TableName, sinceMs: number): number
   if (!hasTable(db, table)) return 0;
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE timestamp_ms >= ?`).get(sinceMs) as { count?: number } | undefined;
   return Number(row?.count ?? 0);
+}
+
+
+function recentRunRows(db: DatabaseSync, limit = 8): Array<{ runId:string; engineVersion:string; runStartedAtMs:number }> {
+  if (!hasTable(db,'radar_runs')) return [];
+  const rows=db.prepare(`SELECT payload FROM radar_runs ORDER BY timestamp_ms DESC,id DESC LIMIT ?`).all(limit) as unknown as Array<{payload:string}>;
+  return rows.flatMap(row=>{
+    const payload=parsePayload(row.payload);
+    const runId=typeof payload?.runId==='string'?payload.runId:null;
+    const engineVersion=typeof payload?.engineVersion==='string'?payload.engineVersion:null;
+    const runStartedAtMs=num(payload?.runStartedAtMs);
+    return runId&&engineVersion&&runStartedAtMs!==null?[{runId,engineVersion,runStartedAtMs}]:[];
+  });
+}
+
+function runIdOf(payload: Record<string,unknown> | null): string | null {
+  return typeof payload?.runId === 'string' ? payload.runId : null;
+}
+
+function rowsSinceForRun(db: DatabaseSync, table: TableName, sinceMs: number, runId: string | null, limit = ANALYSIS_ROW_CAP): ObservationRow[] {
+  if (!hasTable(db, table)) return [];
+  const safeLimit=Math.min(ANALYSIS_ROW_CAP,Math.max(1,Math.floor(limit)));
+  if (runId === null) return rowsSince(db,table,sinceMs,safeLimit);
+  return db.prepare(`SELECT id,timestamp_ms,block_number,source,observation_key,payload
+    FROM ${table}
+    WHERE timestamp_ms >= ? AND json_valid(payload)=1 AND json_extract(payload,'$.runId') = ?
+    ORDER BY timestamp_ms DESC,id DESC LIMIT ?`)
+    .all(sinceMs,runId,safeLimit) as unknown as ObservationRow[];
+}
+
+function exactFunnelCounts(db: DatabaseSync, fromMs:number, toMs:number, runId:string|null) {
+  if (!hasTable(db,'route_screens') || !hasTable(db,'executable_quotes')) {
+    return {qualifyingScreens:0,quoteBackedCandidates:0,positiveExecutableQuotes:0,unavailableQuotes:0};
+  }
+  const runScreen = runId===null ? '' : " AND json_extract(payload,'$.runId') = ?";
+  const runQuote = runId===null ? '' : " AND json_extract(payload,'$.runId') = ?";
+  const screenArgs = runId===null ? [fromMs,toMs] : [fromMs,toMs,runId];
+  const quoteArgs = runId===null ? [fromMs,toMs] : [fromMs,toMs,runId];
+
+  const qualifying=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
+    FROM route_screens
+    WHERE timestamp_ms BETWEEN ? AND ? AND json_valid(payload)=1
+      AND json_extract(payload,'$.screen.passesFeeFloor') = 1${runScreen}`).get(...screenArgs) as {count?:number}|undefined)?.count ?? 0;
+
+  const backed=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
+    FROM executable_quotes
+    WHERE json_valid(payload)=1
+      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND json_type(payload,'$.netProfitUsd') IN ('integer','real')${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
+
+  const positive=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
+    FROM executable_quotes
+    WHERE json_valid(payload)=1
+      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND json_type(payload,'$.netProfitUsd') IN ('integer','real')
+      AND CAST(json_extract(payload,'$.netProfitUsd') AS REAL) > 0${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
+
+  const unavailable=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
+    FROM executable_quotes
+    WHERE json_valid(payload)=1
+      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND json_extract(payload,'$.status') = 'unavailable'${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
+
+  return {
+    qualifyingScreens:Number(qualifying),
+    quoteBackedCandidates:Number(backed),
+    positiveExecutableQuotes:Number(positive),
+    unavailableQuotes:Number(unavailable),
+  };
+}
+
+function lastTickForRun(db: DatabaseSync, runId:string): number | null {
+  if (!hasTable(db,'radar_runtime')) return null;
+  const row=db.prepare(`SELECT payload FROM radar_runtime
+    WHERE json_valid(payload)=1 AND json_extract(payload,'$.runId')=?
+    ORDER BY timestamp_ms DESC,id DESC LIMIT 1`).get(runId) as {payload?:string}|undefined;
+  const payload=row?.payload?parsePayload(row.payload):null;
+  return num(payload?.durationMs);
 }
 
 function rowsSince(db: DatabaseSync, table: TableName, sinceMs: number, limit = ANALYSIS_ROW_CAP): ObservationRow[] {
@@ -445,6 +534,7 @@ export function buildDashboardSnapshot(
   limit = 100,
   nowMs = Date.now(),
   recentWindowMs = DEFAULT_WINDOW_MS,
+  runSelector: string = 'current',
 ): DashboardSnapshot {
   const generatedAtMs = Number.isFinite(nowMs) ? nowMs : Date.now();
   const durationMs = Number.isFinite(recentWindowMs) && recentWindowMs > 0
@@ -464,6 +554,8 @@ export function buildDashboardSnapshot(
       truncated: { routeScreens:false,executableQuotes:false,lifecycleRows:false,rpcSamples:false },
     },
     counts: { launches:0,marketSnapshots:0,routeScreens:0,executableQuotes:0,lifecycleRows:0,rpcSamples:0 },
+    run:{mode:'all' as const,selectedRunId:null,currentRunId:null,engineVersion:null,recentRuns:[]},
+    runComparison:{current:null,previous:null},
     radar: {
       qualifyingScreens:0,quoteBackedCandidates:0,positiveExecutableQuotes:0,nonpositiveExecutableQuotes:0,
       unavailableQuotes:0,positiveRatePct:null,uniqueTokens:0,medianRpcLatencyMs:null,p95RpcLatencyMs:null,
@@ -489,17 +581,23 @@ export function buildDashboardSnapshot(
 
   const db = new DatabaseSync(path, { readOnly: true });
   try {
+    const recentRuns=recentRunRows(db);
+    const currentRun=recentRuns[0] ?? null;
+    const mode: 'current'|'specific'|'all' = runSelector==='all' ? 'all' : runSelector==='current' ? 'current' : 'specific';
+    const selectedRunId = mode==='all' ? null : mode==='current' ? currentRun?.runId ?? null : runSelector;
+    const selectedMeta = selectedRunId ? recentRuns.find(x=>x.runId===selectedRunId) ?? null : null;
+    const previousRun = currentRun ? recentRuns.find(x=>x.runId!==currentRun.runId) ?? null : null;
     const recentCounts = {
       routeScreens: countSince(db,'route_screens',fromMs),
       executableQuotes: countSince(db,'executable_quotes',fromMs),
       lifecycleRows: countSince(db,'opportunity_lifecycle',fromMs),
       rpcSamples: countSince(db,'rpc_latency_samples',fromMs),
     };
-    const screens = rowsSince(db,'route_screens',fromMs);
-    const quoteRows = rowsSince(db,'executable_quotes',fromMs);
-    const lifecycle = rowsSince(db,'opportunity_lifecycle',fromMs);
-    const rpc = rowsSince(db,'rpc_latency_samples',fromMs);
-    const runtimeRows = rowsSince(db,'radar_runtime',fromMs,20);
+    const screens = rowsSinceForRun(db,'route_screens',fromMs,selectedRunId);
+    const quoteRows = rowsSinceForRun(db,'executable_quotes',fromMs,selectedRunId);
+    const lifecycle = rowsSinceForRun(db,'opportunity_lifecycle',fromMs,selectedRunId);
+    const rpc = rowsSinceForRun(db,'rpc_latency_samples',fromMs,selectedRunId);
+    const runtimeRows = rowsSinceForRun(db,'radar_runtime',fromMs,selectedRunId,20);
     let runtime: DashboardSnapshot['runtime'] = emptyBase.runtime;
     for (const row of runtimeRows) {
       const payload=parsePayload(row.payload);
@@ -525,11 +623,8 @@ export function buildDashboardSnapshot(
       break;
     }
 
-    const qualifyingScreens = screens.reduce((total,row)=>{
-      const payload=parsePayload(row.payload);
-      const screen=payload?.screen as Record<string,unknown> | null | undefined;
-      return total + (screen?.passesFeeFloor === true ? 1 : 0);
-    },0);
+    const funnel=exactFunnelCounts(db,fromMs,generatedAtMs,selectedRunId);
+    const qualifyingScreens=funnel.qualifyingScreens;
 
     const tokens = new Set<string>();
     for (const row of screens) {
@@ -541,10 +636,10 @@ export function buildDashboardSnapshot(
     const { opportunities: allOpportunities, paperPnl, pnlTraces, latestPositiveOpportunity } = summarizeOpportunities(quoteRows,fromMs,generatedAtMs);
     for (const item of allOpportunities) if (typeof item.token === 'string') tokens.add(item.token.toLowerCase());
 
-    const quoteBackedCandidates = allOpportunities.filter(x=>x.quoteCount > 0).length;
-    const positiveExecutableQuotes = allOpportunities.filter(x=>x.status === 'positive' && x.quoteCount > 0).length;
-    const nonpositiveExecutableQuotes = allOpportunities.filter(x=>x.status === 'nonpositive' && x.quoteCount > 0).length;
-    const unavailableQuotes = allOpportunities.filter(x=>x.status === 'unavailable').length;
+    const quoteBackedCandidates = funnel.quoteBackedCandidates;
+    const positiveExecutableQuotes = funnel.positiveExecutableQuotes;
+    const nonpositiveExecutableQuotes = Math.max(0,quoteBackedCandidates-positiveExecutableQuotes);
+    const unavailableQuotes = funnel.unavailableQuotes;
 
     const timings: Array<Record<string,unknown>> = [];
     const queueDelays: number[] = [];
@@ -663,6 +758,17 @@ export function buildDashboardSnapshot(
         executableQuotes:countRows(db,'executable_quotes'),
         lifecycleRows:countRows(db,'opportunity_lifecycle'),
         rpcSamples:countRows(db,'rpc_latency_samples'),
+      },
+      run:{
+        mode,
+        selectedRunId,
+        currentRunId:currentRun?.runId ?? null,
+        engineVersion:selectedMeta?.engineVersion ?? (mode==='current'?currentRun?.engineVersion ?? null:null),
+        recentRuns,
+      },
+      runComparison:{
+        current:currentRun?{runId:currentRun.runId,engineVersion:currentRun.engineVersion,lastTickDurationMs:lastTickForRun(db,currentRun.runId)}:null,
+        previous:previousRun?{runId:previousRun.runId,engineVersion:previousRun.engineVersion,lastTickDurationMs:lastTickForRun(db,previousRun.runId)}:null,
       },
       radar:{
         qualifyingScreens,
