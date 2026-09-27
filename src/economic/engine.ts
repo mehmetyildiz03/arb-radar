@@ -81,6 +81,7 @@ export interface EconomicExecutionQuote extends ExecutionQuote {
   gasUnitsResearch: bigint;
   gasPriceWei: bigint;
   infinitesimalEdgeBps: number;
+  screenMicroGrossEdgeBps: number;
   costBreakdown: QuoteCostBreakdown;
   green: boolean;
   assumptions: string[];
@@ -444,6 +445,7 @@ export async function quotePreparedEconomicCandidate(
     gasUnitsResearch,
     gasPriceWei,
     infinitesimalEdgeBps:prepared.truth.infinitesimalEdgeBps,
+    screenMicroGrossEdgeBps:prepared.screen.microGrossEdgeBps,
     costBreakdown,
     green:costBreakdown.netProfitUsd>0,
     assumptions:[
