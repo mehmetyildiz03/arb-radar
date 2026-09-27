@@ -32,7 +32,7 @@ export function loadConfig(env = process.env): RadarConfig {
     minNetProfitUsd: positiveNumber(env.MIN_NET_PROFIT_USD, 0.05),
     maxCandidateTradeUsd: positiveNumber(env.MAX_CANDIDATE_TRADE_USD, 100),
     minCandidateTradeUsd: Math.min(
-      positiveNumber(env.MIN_CANDIDATE_TRADE_USD, 0.10),
+      positiveNumber(env.MIN_CANDIDATE_TRADE_USD, 0.01),
       positiveNumber(env.MAX_CANDIDATE_TRADE_USD, 100),
       positiveNumber(env.PAPER_CAPITAL_USD, 100),
     ),
