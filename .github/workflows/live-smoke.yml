@@ -2,7 +2,7 @@ name: Live Smoke
 
 on:
   push:
-    branches: [main, v0.8.1-truth-calibration]
+    branches: [main]
     paths:
       - 'src/**'
       - 'package.json'
