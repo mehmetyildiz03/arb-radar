@@ -162,4 +162,4 @@ The important remaining limits are:
 - a positive sample does not establish strategy-level expectancy;
 - LONG5 historical data still lacks historical executable same-block state needed to reconstruct past closed-cycle P&L honestly.
 
-See [architecture](docs/ARCHITECTURE.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).
+See [architecture](docs/ARCHITECTURE.md), [v0.8.2 depth audit](docs/V0.8.2_AUDIT.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).
