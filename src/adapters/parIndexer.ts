@@ -32,8 +32,8 @@ function normalizeMarket(raw: unknown, fallbackIndex: number): MarketSnapshot | 
 
   const pairToken = asAddress(row.pairToken);
   if (!pairToken) return null;
-  const priceEth = asNumber(row.lastPriceEth ?? row.priceEth);
-  if (!(priceEth && priceEth > 0)) return null;
+  const rawPriceEth = asNumber(row.lastPriceEth ?? row.priceEth);
+  const priceEth = rawPriceEth !== undefined && rawPriceEth > 0 ? rawPriceEth : undefined;
 
   const poolIdString = asString(row.poolId);
   const poolId = poolIdString && /^0x[0-9a-fA-F]{64}$/.test(poolIdString) ? (poolIdString.toLowerCase() as `0x${string}`) : undefined;
@@ -48,8 +48,12 @@ function normalizeMarket(raw: unknown, fallbackIndex: number): MarketSnapshot | 
     index,
     pairToken,
     quoteSymbol: asString(row.quoteSymbol) ?? `MARKET_${fallbackIndex}`,
+    quoteDecimals: asNumber(row.quoteDecimals),
     poolId,
     tokenPriceEth: priceEth,
+    phantomQuoteRaw: asString(row.phantomQuote),
+    quoteRaisedRaw: asString(row.quoteRaised),
+    tokensOnCurveRaw: asString(row.tokensOnCurve),
     recentVolumeEth: asNumber(row.recentVolumeEth ?? row.totalVolumeEth),
   };
 }
