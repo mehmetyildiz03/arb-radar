@@ -74,10 +74,21 @@ function otherCurrency(key: PoolKey, input: Address): Address {
   throw new Error('Route hop does not contain current currency');
 }
 
-function walk(reference: Address, hops: readonly Hop[]): { currencies: Address[]; steps: DirectedPoolHop[] } {
-  const currencies: Address[]=[reference];
+function walk(reference: Address, wrappedReference: Address, hops: readonly Hop[]): { currencies: Address[]; steps: DirectedPoolHop[] } {
+  if(hops.length===0) return {currencies:[reference],steps:[]};
+
+  const first=hops[0]!;
+  const firstHasNative=same(first.key.currency0,reference)||same(first.key.currency1,reference);
+  const firstHasWrapped=same(first.key.currency0,wrappedReference)||same(first.key.currency1,wrappedReference);
+  if(!firstHasNative&&!firstHasWrapped) throw new Error('Reference route does not start in native or wrapped reference');
+
+  // Par's router can wrap native ETH into WETH before the first pool. The
+  // canonical V4Quoter cannot model that wrapper, so the research graph
+  // starts at the pool's actual input currency. This keeps the quoted cycle
+  // closed in real pool currencies rather than pretending native == WETH.
+  let current=firstHasNative?reference:wrappedReference;
+  const currencies: Address[]=[current];
   const steps: DirectedPoolHop[]=[];
-  let current=reference;
   for(const hop of hops){
     const output=otherCurrency(hop.key,current);
     steps.push({input:current,output,key:hop.key,v3:hop.v3,role:'reference'});
@@ -123,8 +134,8 @@ export function enumerateClosedCycles(
   if(!buy||!sell||!buyRoute||!sellRoute) return [];
 
   const ref=getReference(chainId);
-  const a=walk(ref.address,buyRoute.buyHops);
-  const b=walk(ref.address,sellRoute.buyHops);
+  const a=walk(ref.address,ref.wrapped,buyRoute.buyHops);
+  const b=walk(ref.address,ref.wrapped,sellRoute.buyHops);
   if(!same(a.currencies.at(-1)!,buy.pairToken) || !same(b.currencies.at(-1)!,sell.pairToken)) {
     throw new Error('Reference route endpoint mismatch');
   }
@@ -343,7 +354,7 @@ export function referenceToBaseSpot(cycle:ClosedCycle, states:Record<string,V4Po
 }
 
 export function bestStructuralCycle(cycles:readonly ClosedCycle[]): ClosedCycle | null {
-  return cycles.find(c=>c.allV4) ?? cycles[0] ?? null;
+  return cycles.find(c=>c.allV4&&c.hooklessV4) ?? cycles.find(c=>c.allV4) ?? cycles[0] ?? null;
 }
 
 export { zeroAddress };
