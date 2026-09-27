@@ -21,6 +21,11 @@ interface OpportunitySummary extends Record<string, unknown> {
   buyMarket: unknown;
   sellMarket: unknown;
   grossSpreadPct: number | null;
+  verifiedClosedCycle: boolean;
+  engine: string | null;
+  truthLevel: string | null;
+  baseSymbol: string | null;
+  hopCount: number | null;
   firstProbeTimestampMs: number | null;
   firstProbeInputUsd: number | null;
   firstProbeNetProfitUsd: number | null;
@@ -226,13 +231,15 @@ function exactFunnelCounts(db: DatabaseSync, fromMs:number, toMs:number, runId:s
     FROM executable_quotes
     WHERE json_valid(payload)=1
       AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
-      AND json_type(payload,'$.netProfitUsd') IN ('integer','real')${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
+      AND json_type(payload,'$.netProfitUsd') IN ('integer','real')
+      AND json_extract(payload,'$.verifiedClosedCycle') = 1${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   const positive=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
     FROM executable_quotes
     WHERE json_valid(payload)=1
       AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
       AND json_type(payload,'$.netProfitUsd') IN ('integer','real')
+      AND json_extract(payload,'$.verifiedClosedCycle') = 1
       AND CAST(json_extract(payload,'$.netProfitUsd') AS REAL) > 0${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   const unavailable=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
@@ -395,14 +402,24 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
     const breakdown = quoteBreakdownFromPayload(payload,quote);
     const profile = quoteProfile(quote);
     const isUnavailable = payload.status === 'unavailable';
+    const verifiedClosedCycle = payload.verifiedClosedCycle === true || quote?.verifiedClosedCycle === true;
+    const engine = typeof payload.engine === 'string' ? payload.engine : typeof quote?.engine === 'string' ? quote.engine : null;
+    const truthLevel = typeof payload.truthLevel === 'string' ? payload.truthLevel : typeof quote?.truthLevel === 'string' ? quote.truthLevel : null;
+    const baseSymbol = typeof payload.baseSymbol === 'string' ? payload.baseSymbol : typeof quote?.baseSymbol === 'string' ? quote.baseSymbol : null;
+    const hopCount = num(payload.hopCount) ?? num(quote?.hopCount);
     const current = groups.get(row.observation_key);
 
     if (!current) {
       groups.set(row.observation_key, {
         key: row.observation_key,
         timestampMs: discoveryMs(payload,row),
-        status: isUnavailable ? 'unavailable' : (netProfitUsd !== null && netProfitUsd > 0 ? 'positive' : 'nonpositive'),
+        status: isUnavailable ? 'unavailable' : (verifiedClosedCycle && netProfitUsd !== null && netProfitUsd > 0 ? 'positive' : 'nonpositive'),
         token: fields.token,
+        verifiedClosedCycle,
+        engine,
+        truthLevel,
+        baseSymbol,
+        hopCount,
         buyMarket: fields.buyMarket,
         sellMarket: fields.sellMarket,
         grossSpreadPct: fields.grossSpreadPct,
@@ -429,6 +446,11 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       });
     } else {
       if ((current.token === null || current.token === undefined) && fields.token !== null) current.token = fields.token;
+      current.verifiedClosedCycle ||= verifiedClosedCycle;
+      current.engine ??= engine;
+      current.truthLevel ??= truthLevel;
+      current.baseSymbol ??= baseSymbol;
+      current.hopCount ??= hopCount;
       if ((current.buyMarket === null || current.buyMarket === undefined) && fields.buyMarket !== null) current.buyMarket = fields.buyMarket;
       if ((current.sellMarket === null || current.sellMarket === undefined) && fields.sellMarket !== null) current.sellMarket = fields.sellMarket;
       if (current.grossSpreadPct === null && fields.grossSpreadPct !== null) current.grossSpreadPct = fields.grossSpreadPct;
@@ -460,7 +482,7 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
 
     if (netProfitUsd !== null) {
       paperPnl.push({ timestampMs: row.timestamp_ms, netProfitUsd, key: row.observation_key });
-      if (netProfitUsd > 0 && (!latestPositiveRow || row.timestamp_ms > latestPositiveRow.row.timestamp_ms)) {
+      if (verifiedClosedCycle && netProfitUsd > 0 && (!latestPositiveRow || row.timestamp_ms > latestPositiveRow.row.timestamp_ms)) {
         latestPositiveRow = { row, payload };
       }
     }
@@ -469,7 +491,7 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
   const allMutable=[...groups.values()];
   const opportunities = allMutable
     .map(({ _hasNumeric, _firstProbeId, _bestTimestampMs, ...item }) => {
-      if (_hasNumeric) item.status = (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
+      if (_hasNumeric) item.status = item.verifiedClosedCycle && (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
       return item;
     })
     .sort((a,b)=>b.timestampMs-a.timestampMs);
@@ -498,6 +520,11 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       timestampMs: row.timestamp_ms,
       status: 'positive',
       token: fields.token,
+      verifiedClosedCycle:true,
+      engine:typeof payload.engine==='string'?payload.engine:typeof quote?.engine==='string'?quote.engine:null,
+      truthLevel:typeof payload.truthLevel==='string'?payload.truthLevel:typeof quote?.truthLevel==='string'?quote.truthLevel:null,
+      baseSymbol:typeof payload.baseSymbol==='string'?payload.baseSymbol:typeof quote?.baseSymbol==='string'?quote.baseSymbol:null,
+      hopCount:num(payload.hopCount)??num(quote?.hopCount),
       buyMarket: fields.buyMarket,
       sellMarket: fields.sellMarket,
       grossSpreadPct: fields.grossSpreadPct,
