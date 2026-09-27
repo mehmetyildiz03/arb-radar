@@ -1,4 +1,4 @@
-# Arb Radar v0.8.1 — Economic Truth Engine
+# Arb Radar v0.8.2 — Economic Truth Engine
 
 Paper-only research radar for Par multi-market dislocations on Robinhood Chain. The application has no wallet, private key, signer, transaction submission, or automated trading path.
 
@@ -67,11 +67,11 @@ The structural selector prefers an all-V4 cycle and then fewer hops. Verified qu
 
 Screening state comes from canonical V4 StateView reads at one block. For each V4 pool the engine reads slot0 and active liquidity and applies Uniswap v4's directional protocol-fee + LP-fee composition. The indexer's `lastPriceEth` is not used to decide whether a v0.8 opportunity is executable.
 
-The screen is infinitesimal/marginal only. It is a cheap onchain filter, not a profit quote. v0.8.1 also requires every hop to have non-zero active V4 liquidity before a marginal edge can enter the candidate queue.
+The screen is infinitesimal/marginal only. It is a cheap onchain filter, not a profit quote. Every hop must have non-zero active V4 liquidity before a marginal edge can enter the candidate queue. v0.8.2 then uses exact executable depth, not the marginal percentage, to decide how far sizing may continue.
 
 ### Exact amount-sensitive quote
 
-The first executable probe uses the deployed Robinhood V4Quoter as one multi-hop closed-cycle quote. v0.8.1 lowers the exact first-probe/minimum sizing notional from $1 to $0.10 so shallow sub-$1 opportunities are not skipped. The quote starts and ends in the same raw base asset, so no nominal cross-asset comparison is treated as profit.
+The first executable probe uses the deployed Robinhood V4Quoter as one multi-hop closed-cycle quote. v0.8.2 probes from $0.01 so cent-scale executable depth is not hidden by a larger fixed minimum. The quote starts and ends in the same raw base asset, so no nominal cross-asset comparison is treated as profit.
 
 Screen block and quote block are intentionally different concepts:
 - the screen records when an edge was observed;
@@ -82,9 +82,11 @@ This prevents a stale profitable screen from being presented as a current execut
 
 ### Sizing
 
-When both Par pools still have active liquidity exactly equal to Par's locked liquidity and the indexer supplied valid `phantomQuote`, `quoteRaised` and `tokensOnCurve` metadata, a two-pool constant-product closed form proposes a size. That analytical result is **only a seed**. The engine exact-quotes 75%, 100% and 125% around it.
+Sizing is now **depth-aware and monotonic**. At one pinned sizing block the engine attempts `$0.01 → $0.03 → $0.10 → $0.30 → $1 → $3 → $10 → $30 → $100` (bounded by paper capital and max trade). If canonical V4Quoter returns `NotEnoughLiquidity`, that notional becomes an observed depth boundary and larger sizes are not attempted. Any other quote/RPC error still fails closed.
 
-If those strict assumptions do not hold, or the seeded quotes do not produce an accepted result, the engine falls back to the existing deterministic eight-size exact quote grid beginning at `MIN_CANDIDATE_TRADE_USD` (default $0.10). If the exact first probe already has gross output <= input, sizing is skipped because a larger no-hook V4 trade cannot improve average execution on the same directed cycle. Analytical math never creates a green result by itself.
+If the smallest exact quote has gross output <= input, sizing stops immediately because a larger hookless V4 trade cannot improve average execution on that directed cycle. Successful exact quotes are retained even when the next size hits the liquidity boundary.
+
+The constant-product model remains available only as an **analytical seed** under strict Par liquidity/curve assumptions. Seed validation points are considered only inside the already-observed executable depth region. Analytical math never creates a green result by itself.
 
 ## Paper cost model
 
@@ -117,6 +119,7 @@ The table also exposes:
 - base asset,
 - hop count,
 - exact first-probe depth edge (marginal spot outliers are not presented as executable spread),
+- depth-rejected candidate count and `NotEnoughLiquidity` failure count,
 - first probe,
 - latest/best paper net,
 - block,
@@ -135,7 +138,7 @@ The table also exposes:
 | `POLL_MS` | 1000 | Delay between completed watch scans |
 | `PAPER_CAPITAL_USD` | 100 | Total paper budget |
 | `MAX_CANDIDATE_TRADE_USD` | 100 | Maximum quote input |
-| `MIN_CANDIDATE_TRADE_USD` | 0.10 | Exact first-probe and fallback-grid minimum |
+| `MIN_CANDIDATE_TRADE_USD` | 0.01 | Exact first-probe and depth-ladder minimum |
 | `MIN_NET_PROFIT_USD` | 0.05 | Accepted paper-net threshold |
 | `PROBE_CONCURRENCY` | 2 | Parallel first-probe phases, max 8 |
 | `SIZING_CONCURRENCY` | 1 | Parallel candidate sizing phases, max 4 |
