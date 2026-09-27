@@ -168,6 +168,13 @@ console.log(JSON.stringify({
   ok:true,
   paperOnly:true,
   purpose:'v0.8.2 full marginal-vs-executable-depth audit',
+  productionDepthPolicy:{
+    minUsd:.01,
+    ladder:[.01,.03,.1,.3,1,3,10,30,100],
+    liquidityBoundary:'stop at canonical NotEnoughLiquidity; preserve smaller successful exact quotes',
+    unknownErrors:'fail closed',
+    costs:'unchanged',
+  },
   blockNumber:blockNumber.toString(),
   launchesExamined:launches.length,
   candidateCount:candidates.length,
