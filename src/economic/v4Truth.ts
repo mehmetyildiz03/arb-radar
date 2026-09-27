@@ -215,7 +215,8 @@ export async function readCycleTruth(
   if(!cycle.allV4) throw new Error('Same-block v4 truth requires an all-v4 cycle');
   const block=blockNumber ?? await client.getBlockNumber({cacheTime:0});
   const unique=new Map<string,{id:Hex}>();
-  for(const hop of cycle.hops){
+  for(const hop of [...cycle.hops,...cycle.referenceToBase]){
+    if(hop.v3) throw new Error('Same-block base valuation contains v3');
     const id=poolIdOf(hop.key);
     unique.set(id.toLowerCase(),{id});
   }
