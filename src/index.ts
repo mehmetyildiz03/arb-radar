@@ -152,7 +152,7 @@ async function tick(): Promise<void> {
         const prepared=await prepareLaunchEconomicCandidates(client,meta,snapshot,ethValuation!.usdPerEth,{
           paperCapitalUsd:config.paperCapitalUsd,
           maxTradeUsd:config.maxCandidateTradeUsd,
-          minTradeUsd:1,
+          minTradeUsd:config.minCandidateTradeUsd,
           blockNumber:screenBlock,
         });
         return prepared.map(item=>{
@@ -205,7 +205,7 @@ async function tick(): Promise<void> {
     },
     async(queued,controls)=>{
       const {prepared,discoveredAtMs,key}=queued.value;
-      const trackedInput=Math.min(1,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
+      const trackedInput=Math.min(config.minCandidateTradeUsd,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
 
       const persistQuote=(quote:EconomicExecutionQuote,phase:string)=>{
         store.record('executable_quotes',key,withRun(run,{
@@ -270,6 +270,7 @@ async function tick(): Promise<void> {
           },{
             capitalUsd:config.paperCapitalUsd,
             maxTradeUsd:config.maxCandidateTradeUsd,
+            minTradeUsd:config.minCandidateTradeUsd,
             steps:8,
             minNetProfitUsd:config.minNetProfitUsd,
             quoteConcurrency:config.sizingQuoteConcurrency,
@@ -278,6 +279,8 @@ async function tick(): Promise<void> {
           return bestGrid?{...bestGrid,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock}:null;
         },
         profit:q=>q.costBreakdown.netProfitUsd,
+        shouldSize:q=>q.outputUsd>q.inputUsd,
+        sizingSkipReason:'exact-depth-probe-gross-nonpositive',
         recordSample:sample=>store.record('opportunity_lifecycle',key,withRun(run,{
           ...sample,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.8-economic-truth',
         }),{timestampMs:sample.completedMs,blockNumber:sample.quote?.blockNumber??null,source:'arb-radar:economic-truth'}),
@@ -349,6 +352,7 @@ async function tick(): Promise<void> {
     probeConcurrency:config.probeConcurrency,
     sizingConcurrency:config.sizingConcurrency,
     sizingQuoteConcurrency:config.sizingQuoteConcurrency,
+    minCandidateTradeUsd:config.minCandidateTradeUsd,
     truthScanConcurrency:config.truthScanConcurrency,
     truthLaunchLimit:config.truthLaunchLimit,
     candidateMaxQueueMs:config.candidateMaxQueueMs,
