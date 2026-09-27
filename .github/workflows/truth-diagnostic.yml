@@ -1,15 +1,6 @@
 name: Truth Diagnostic
 
 on:
-  push:
-    branches: [v0.8.2-truth-depth-audit]
-    paths:
-      - 'scripts/v081-truth-diagnostic.mjs'
-      - '.github/workflows/truth-diagnostic.yml'
-      - 'src/economic/**'
-      - 'src/adapters/**'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
