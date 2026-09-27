@@ -34,13 +34,17 @@ import {
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from './seed.js';
 
 export interface EconomicScreen extends RouteScreen {
-  source: 'same-block-v4-state';
+  source: 'same-block-v4-micro-quote';
   blockNumber: bigint;
   infinitesimalEdgeBps: number;
+  microQuoteInputUsd: number;
+  microGrossMultiplier: number;
+  microGrossEdgeBps: number;
+  microGasEstimate: bigint;
   base: Address;
   baseSymbol: string;
   hopCount: number;
-  truthLevel: 'same-block-v4-spot';
+  truthLevel: 'same-block-v4-micro-quote';
 }
 
 export interface PreparedEconomicCandidate {
@@ -56,6 +60,8 @@ export interface PreparedEconomicCandidate {
   seedUsd: number | null;
   seedTrusted: boolean;
   sizingAmountsUsd: number[];
+  screenProbeAmountInRaw: bigint;
+  screenProbeAmountOutRaw: bigint;
 }
 
 export interface EconomicExecutionQuote extends ExecutionQuote {
@@ -157,6 +163,19 @@ function parseRaw(value:string|undefined):number|null {
   return Number.isFinite(n)&&n>0?n:null;
 }
 
+export function cycleHasActiveLiquidity(cycle:ClosedCycle,states:Record<string,V4PoolState>):boolean {
+  return cycle.hops.every(hop=>{
+    if(hop.v3) return false;
+    const state=states[poolIdOf(hop.key).toLowerCase()];
+    return !!state && state.liquidity>0n;
+  });
+}
+
+export function closedCycleGrossMultiplier(amountIn:bigint,amountOut:bigint):number {
+  if(amountIn<=0n||amountOut<0n) throw new Error('Invalid closed-cycle amounts');
+  return Number(amountOut)/Number(amountIn);
+}
+
 function analyticSeedUsd(
   candidate: {
     launch:TradableLaunch;
@@ -219,10 +238,21 @@ export async function prepareLaunchEconomicCandidates(
   launch:TradableLaunch,
   snapshot:LaunchSnapshot,
   ethUsdPrice:number,
-  options:{paperCapitalUsd:number;maxTradeUsd:number;minTradeUsd?:number;blockNumber?:bigint},
+  options:{
+    paperCapitalUsd:number;
+    maxTradeUsd:number;
+    minTradeUsd?:number;
+    screenProbeUsd?:number;
+    blockNumber?:bigint;
+  },
 ):Promise<PreparedEconomicCandidate[]> {
   if(launch.kind!=='multi'||launch.markets.length<2) return [];
   const blockNumber=options.blockNumber ?? await client.getBlockNumber({cacheTime:0});
+  const screenProbeUsd=Math.min(
+    options.maxTradeUsd,
+    options.paperCapitalUsd,
+    Math.max(0.000001,options.screenProbeUsd ?? 0.01),
+  );
 
   const pairCycles:Array<{buy:number;sell:number;cycles:ClosedCycle[]}>= [];
   const allCycles:ClosedCycle[]=[];
@@ -243,55 +273,114 @@ export async function prepareLaunchEconomicCandidates(
 
   for(const pair of pairCycles){
     const truths=pair.cycles
+      .filter(cycle=>cycleHasActiveLiquidity(cycle,states))
       .map(cycle=>cycleTruthFromStates(cycle,states,blockNumber))
-      .filter(truth=>truth.passesInfinitesimalEdge);
-    truths.sort((a,b)=>
-      a.cycle.hopCount-b.cycle.hopCount ||
-      b.infinitesimalMultiplier-a.infinitesimalMultiplier ||
-      a.cycle.base.toLowerCase().localeCompare(b.cycle.base.toLowerCase()));
-    const truth=truths[0];
-    if(!truth) continue;
+      .filter(truth=>truth.passesInfinitesimalEdge)
+      .sort((a,b)=>
+        a.cycle.hopCount-b.cycle.hopCount ||
+        b.infinitesimalMultiplier-a.infinitesimalMultiplier ||
+        a.cycle.base.toLowerCase().localeCompare(b.cycle.base.toLowerCase()));
 
-    const cycle=truth.cycle;
-    const baseKey=cycle.base.toLowerCase();
-    let baseMeta=baseMetaCache.get(baseKey);
-    if(!baseMeta){
-      const decimals=await baseDecimalsAtBlock(client,launch,cycle.base,blockNumber);
-      const usd=await baseUsdAtBlock(client,cycle.base,decimals,ethUsdPrice,blockNumber);
-      baseMeta={decimals,usd};
-      baseMetaCache.set(baseKey,baseMeta);
+    let selected:null|{
+      truth:CycleTruth;
+      baseDecimals:number;
+      baseUsdPrice:number;
+      amountInRaw:bigint;
+      amountOutRaw:bigint;
+      gasEstimate:bigint;
+      microGrossMultiplier:number;
+    }=null;
+
+    for(const truth of truths){
+      const cycle=truth.cycle;
+      const baseKey=cycle.base.toLowerCase();
+      let baseMeta=baseMetaCache.get(baseKey);
+      try{
+        if(!baseMeta){
+          const decimals=await baseDecimalsAtBlock(client,launch,cycle.base,blockNumber);
+          const usd=await baseUsdAtBlock(client,cycle.base,decimals,ethUsdPrice,blockNumber);
+          baseMeta={decimals,usd};
+          baseMetaCache.set(baseKey,baseMeta);
+        }
+        const amountInRaw=inputRawForUsd(screenProbeUsd,baseMeta.usd,baseMeta.decimals);
+        const micro=await quoteClosedCycle(client,cycle,amountInRaw,blockNumber);
+        const microGrossMultiplier=closedCycleGrossMultiplier(amountInRaw,micro.amountOut);
+        if(!(microGrossMultiplier>1)) continue;
+        selected={
+          truth,
+          baseDecimals:baseMeta.decimals,
+          baseUsdPrice:baseMeta.usd,
+          amountInRaw,
+          amountOutRaw:micro.amountOut,
+          gasEstimate:micro.gasEstimate,
+          microGrossMultiplier,
+        };
+        break;
+      }catch{
+        // A spot-positive route that cannot execute even a tiny canonical
+        // same-block closed-cycle quote is not an economic-truth candidate.
+        continue;
+      }
     }
-    const baseDecimals=baseMeta.decimals;
-    const baseUsdPrice=baseMeta.usd;
+
+    if(!selected) continue;
+
+    const truth=selected.truth;
+    const cycle=truth.cycle;
     const route=directedRoute(snapshot,pair.buy,pair.sell);
-    const grossMultiplier=cycleSpotMultiplier(cycle,states,false);
+    const microGrossEdgeBps=(selected.microGrossMultiplier-1)*10_000;
     const screen:EconomicScreen={
       route,
-      grossPriceRatio:grossMultiplier,
-      grossSpreadPct:(grossMultiplier-1)*100,
-      feeAdjustedReturnPct:truth.infinitesimalEdgeBps/100,
+      grossPriceRatio:selected.microGrossMultiplier,
+      grossSpreadPct:(selected.microGrossMultiplier-1)*100,
+      feeAdjustedReturnPct:microGrossEdgeBps/100,
       passesFeeFloor:true,
-      source:'same-block-v4-state',
+      source:'same-block-v4-micro-quote',
       blockNumber,
       infinitesimalEdgeBps:truth.infinitesimalEdgeBps,
+      microQuoteInputUsd:screenProbeUsd,
+      microGrossMultiplier:selected.microGrossMultiplier,
+      microGrossEdgeBps,
+      microGasEstimate:selected.gasEstimate,
       base:cycle.base,
       baseSymbol:cycle.baseSymbol,
       hopCount:cycle.hopCount,
-      truthLevel:'same-block-v4-spot',
+      truthLevel:'same-block-v4-micro-quote',
     };
-    const seed=analyticSeedUsd({launch,snapshot,cycle,truth,baseDecimals,baseUsdPrice});
+    const seed=analyticSeedUsd({
+      launch,
+      snapshot,
+      cycle,
+      truth,
+      baseDecimals:selected.baseDecimals,
+      baseUsdPrice:selected.baseUsdPrice,
+    });
     const maxUsd=Math.min(options.paperCapitalUsd,options.maxTradeUsd);
-    const minUsd=Math.min(options.minTradeUsd ?? 1,maxUsd);
+    const minUsd=Math.min(options.minTradeUsd ?? screenProbeUsd,maxUsd);
     const sizingAmountsUsd=seed.trusted&&seed.seedUsd!==null
       ? seedValidationAmounts(seed.seedUsd,minUsd,maxUsd)
       : [];
 
     out.push({
-      launch,snapshot,route,cycle,truth,screen,baseDecimals,baseUsdPrice,ethUsdPrice,
-      seedUsd:seed.seedUsd,seedTrusted:seed.trusted,sizingAmountsUsd,
+      launch,
+      snapshot,
+      route,
+      cycle,
+      truth,
+      screen,
+      baseDecimals:selected.baseDecimals,
+      baseUsdPrice:selected.baseUsdPrice,
+      ethUsdPrice,
+      seedUsd:seed.seedUsd,
+      seedTrusted:seed.trusted,
+      sizingAmountsUsd,
+      screenProbeAmountInRaw:selected.amountInRaw,
+      screenProbeAmountOutRaw:selected.amountOutRaw,
     });
   }
-  return out.sort((a,b)=>b.truth.infinitesimalEdgeBps-a.truth.infinitesimalEdgeBps);
+  return out.sort((a,b)=>
+    b.screen.microGrossEdgeBps-a.screen.microGrossEdgeBps ||
+    a.cycle.hopCount-b.cycle.hopCount);
 }
 
 function inputRawForUsd(inputUsd:number,baseUsdPrice:number,baseDecimals:number):bigint {
