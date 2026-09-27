@@ -252,9 +252,9 @@ async function tick(): Promise<void> {
               }),
             );
             completed.push(...seeded);
+            for(const quote of seeded) persistQuote(quote,'sizing-seed');
             const bestSeed=[...seeded].sort((a,b)=>b.costBreakdown.netProfitUsd-a.costBreakdown.netProfitUsd)[0];
             if(bestSeed && optimizedFromQuote(context,bestSeed)){
-              for(const quote of seeded) persistQuote(quote,'sizing-seed');
               sizingMode='analytic-seed-exact';
               return {...optimizedFromQuote(context,bestSeed)!,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock};
             }
@@ -274,9 +274,7 @@ async function tick(): Promise<void> {
             minNetProfitUsd:config.minNetProfitUsd,
             quoteConcurrency:config.sizingQuoteConcurrency,
           });
-          completed.push(...gridQuotes);
-          completed.sort((a,b)=>a.inputUsd-b.inputUsd);
-          for(const quote of completed) persistQuote(quote,'sizing-grid');
+          for(const quote of gridQuotes.sort((a,b)=>a.inputUsd-b.inputUsd)) persistQuote(quote,'sizing-grid');
           return bestGrid?{...bestGrid,sizingMode,screenBlock:context.truth.blockNumber,quoteBlock:sizingBlock}:null;
         },
         profit:q=>q.costBreakdown.netProfitUsd,
