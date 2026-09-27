@@ -85,11 +85,12 @@ export async function measureCandidate<C, Q, B>(options: {
       ? await options.withProbePhase(probePhase)
       : await probePhase();
 
-    if (first[0].error || first[0].quote === null) {
+    const firstQuote=first[0]?.quote;
+    if (first[0]?.error || firstQuote == null) {
       timing.firstExecutableQuoteSucceeded = false;
       return { best: null, samples: first, timing: timingReport(timing) };
     }
-    if (options.continueAfterFirst && !options.continueAfterFirst(first[0].quote)) {
+    if (options.continueAfterFirst && !options.continueAfterFirst(firstQuote)) {
       return { best: null, samples: first, timing: timingReport(timing) };
     }
 
