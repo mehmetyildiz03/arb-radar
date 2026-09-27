@@ -1,138 +1,140 @@
-# Arb Radar architecture — v0.8 Economic Truth Engine
+# Arb Radar architecture — v0.8.1 Executable Truth
 
 ## Objective
 
-Measure current Par multi-market dislocations using a closed-cycle, same-base economic model without adding a transaction execution path.
+Measure Par multi-market dislocations with a same-base closed-cycle model while refusing to confuse a mathematical spot ratio with an executable opportunity.
 
-A v0.8 result may become green only after canonical amount-sensitive quoting. Indexer prices are discovery metadata and cannot independently establish executable profitability.
+The central v0.8.1 invariant is:
+
+> A candidate does not enter the expensive capture/sizing pipeline until a canonical same-block micro quote completes the whole supported closed cycle and returns more raw units of the same base asset than it consumed.
 
 ## Pipeline
 
 ### 1. Discovery
 
-`adapters/discovery.ts` asks the Par indexer for recent multi-market launches and refreshes typed `par-sdk` launch/route metadata with a bounded cache.
-
-`adapters/parIndexer.ts` now keeps a market even when `lastPriceEth` is missing. This is intentional: price availability is no longer a prerequisite for discovery. Curve seed metadata such as `phantomQuote`, `quoteRaised`, `tokensOnCurve` and quote decimals is retained when present.
+The Par indexer supplies recent launch/market metadata. `lastPriceEth` is not executable price truth and is not required for discovery.
 
 ### 2. Screen block
 
-Each radar tick pins one canonical Robinhood block. Recent launches are evaluated against that block rather than against asynchronous indexer last-trade prices.
+Each tick pins one canonical Robinhood block.
 
 ### 3. Closed-cycle graph
 
-`economic/v4Truth.ts` walks each market's Par reference route from the chain reference asset toward the market quote asset.
-
-For every directed pair it finds common route nodes and constructs closed cycles:
+`economic/v4Truth.ts` constructs directed same-base cycles:
 
 `base -> buy quote -> Par token -> sell quote -> base`
 
-A common ETH/reference prefix can therefore cancel out. Structural preference is:
-1. all V4,
-2. fewer hops,
-3. deterministic base ordering.
+Common route prefixes are removed. Native ETH and WETH remain distinct real currencies in the canonical V4Quoter path.
 
-The verified quote path additionally requires every hop to have zero hooks. Unsupported V3/hooked cycles fail closed instead of being approximated.
+Verified coverage is currently hookless all-V4.
 
-### 4. Same-block V4 truth
+### 4. StateView prefilter
 
-The engine batches StateView `getSlot0` and `getLiquidity` calls with viem multicall at the pinned screen block.
+V4 StateView slot0 and active liquidity are batched at the screen block.
 
-The infinitesimal multiplier uses pool direction, sqrtPriceX96, directional protocol fee and LP fee. Protocol + LP fee composition follows Uniswap v4's sequential formula:
+For positive active-liquidity paths, fee-aware marginal state can cheaply reject a clearly nonpositive direction.
 
-`swapFee = protocolFee + lpFee - floor(protocolFee * lpFee / 1_000_000)`
+**Zero active liquidity changes the semantics.** slot0 can remain at an extreme boundary tick while the next executable amount must cross into another range. v0.8.1 therefore marks that spot as unreliable and lets the canonical micro quote arbitrate rather than treating the extreme slot0 ratio as an edge.
 
-This stage is only a marginal filter. It is not amount-sensitive P&L.
+### 5. Executable micro truth
 
-### 5. Base valuation
+`prepareLaunchEconomicCandidates` performs an exact same-block V4Quoter closed-cycle quote, default reporting input `$0.01`.
 
-Exact arbitrage math remains in raw same-base units. USD is reporting/accounting only.
+Candidate acceptance requires:
 
-ETH/native and wrapped ETH use ETH/USD directly. Other base assets are valued at the same canonical block through Par QuotePricer's `priceEthAmountInQuote`, then combined with the timestamped ETH/USD valuation.
+`amountOutRaw > amountInRaw`
 
-### 6. Current-block exact first probe
+Gas is intentionally not part of this gate. The gate asks only whether a real gross cycle edge exists at an executable amount; fixed costs are applied later.
 
-A qualifying same-block screen enters the staged scheduler. Immediately before the first probe, the engine obtains the current block and submits the whole hookless all-V4 cycle to Robinhood's canonical V4Quoter in one `quoteExactInput` multi-hop simulation.
+The screen persists:
+- micro input,
+- raw micro result,
+- micro gross multiplier/edge,
+- gas estimate,
+- whether slot0 marginal state was reliable,
+- same-block structural state.
 
-This deliberately avoids quoting the historical screen block: the first probe asks whether the opportunity still exists when measurement reaches it.
+This replaces the old misleading “same-block truth spread”.
+
+### 6. Current-block capture probe
+
+When the scheduler reaches a candidate, it quotes again at the latest block.
+
+If the current-block first probe is gross-negative, `measurement.ts` uses `continueAfterFirst` to terminate the candidate before sizing and later requotes.
+
+If gross-positive but net-negative, sizing continues because a larger input may amortize fixed paper costs.
 
 ### 7. Sizing
 
-`economic/seed.ts` contains a two-pool constant-product analytical optimum.
+Default minimum input is `$0.01`.
 
-It is used only when:
-- both Par pool active-liquidities equal the locked Par liquidities exactly,
-- required curve metadata exists,
-- all conversion path rates needed by the seed are available from the same-block V4 states.
+The analytical two-pool constant-product optimum remains only a seed under strict active-liquidity and curve-metadata assumptions. It is validated by exact quotes.
 
-The seed generates three exact validation sizes around 75/100/125%. If the assumptions fail or the seeded exact quotes do not produce an accepted result, the engine uses the legacy deterministic eight-size exact quote grid.
-
-The analytical result never supplies P&L by itself.
+Otherwise the deterministic eight-size exact grid runs from the configured minimum to maximum.
 
 ### 8. Cost model
 
-`economic/engine.ts` converts the exact closed-cycle output to reporting USD and applies:
-- V4Quoter gas estimate,
-- 20% gas research buffer,
+Exact quote paper net:
+
+`outputUsd - inputUsd - gasUsd - extraCostsUsd - safetyMarginUsd`
+
+Current assumptions:
+- canonical V4Quoter gas estimate,
+- +20% gas buffer,
 - current gas price,
-- $0.05 explicit extra allowance,
+- $0.05 explicit allowance,
 - 1% output safety margin.
 
-The resulting field is paper research P&L. V4Quoter gas is not a deployed atomic-executor gas measurement.
+These are research assumptions, not deployed executor gas.
 
-### 9. Lifecycle and scheduler
+### 9. Lifecycle
 
-`research/scheduler.ts`, `measurement.ts` and `lifecycle.ts` retain:
-- bounded probe/sizing concurrency,
-- queue staleness rejection,
-- original discovery-relative timing,
-- lifecycle targets 0/100/250/500/1000ms,
-- explicit unknown/error samples rather than fabricated zero P&L.
+Scheduler/measurement retain bounded concurrency, queue aging and discovery-relative capture timing. A gross-negative first probe is now terminal for the current verified hookless V4 path, avoiding expensive sizing of economically dominated candidates.
 
-Quote completion is measurement completion, not inclusion.
+### 10. Persistence and run isolation
 
-### 10. Run identity and persistence
+SQLite schema remains append-only. Process metadata includes:
+- `runId`
+- `runStartedAtMs`
+- `engineVersion=0.8.1-executable-truth`
 
-`research/run.ts` creates process-level `runId`, `engineVersion` and `runStartedAtMs`.
-
-SQLite schema version 4 includes:
-- launches
-- market_snapshots
-- route_screens
-- executable_quotes
-- opportunity_lifecycle
-- rpc_latency_samples
-- sequencer_observations
-- radar_runtime
-- radar_runs
-
-v0.8 observations carry run identity in payloads. Existing databases remain append-only/create-if-missing.
+Current-run dashboard views therefore exclude earlier v0.8 spot-screen noise.
 
 ### 11. Dashboard
 
-The dashboard defaults to Current run. It can select a recent run or all runs.
+Funnel:
 
-For run-scoped views, funnel counts are calculated directly in SQLite using distinct candidate keys rather than inferred from the bounded 5,000-row analysis sample.
+**Micro-exact truth -> Current-block quoted -> Verified paper positive**
 
-Green status requires `verifiedClosedCycle=true`. A legacy positive numeric row is not promoted to Verified Positive.
+The displayed candidate edge is the canonical micro quote's gross edge, not the StateView slot0 multiplier.
 
-## Canonical contracts used by the v0.8 truth path
+## Live audit evidence
+
+Before the correction, an 8-scan public-RPC sweep tested 48 candidate observations at $0.01/$0.03/$0.10/$0.30/$1/$3/$10:
+- 64 successful exact quotes,
+- 272 reverts,
+- 0 gross-positive exact quotes,
+- 0 verified-positive quotes.
+
+Extreme slot0 “edges” were observed where a Par buy hop had active liquidity 0 and tick 887271.
+
+After switching to executable micro screening, a public audit over 26 recent launches on two independent blocks produced zero admitted executable-truth candidates. This is expected behavior when no supported gross-positive cycle exists.
+
+## Canonical contracts
 
 Robinhood Chain:
-- Uniswap V4 StateView: `0xf3334192d15450cdd385c8b70e03f9a6bd9e673b`
-- Uniswap V4Quoter: `0x8dc178efb8111bb0973dd9d722ebeff267c98f94`
-
-The addresses are explicit in the source and covered by the live-smoke research path. The engine still uses the pinned Par SDK for launch/pool/reference-route metadata.
+- V4 StateView: `0xf3334192d15450cdd385c8b70e03f9a6bd9e673b`
+- V4Quoter: `0x8dc178efb8111bb0973dd9d722ebeff267c98f94`
 
 ## Hard boundaries
 
-No private key, mnemonic, account signer, `sendTransaction`, write contract, or automatic execution path is part of the application.
+No private key, signer, write contract or transaction submission path exists.
 
-v0.8 does not claim:
-- atomic executor gas,
-- transaction inclusion probability,
-- frontrunning capability,
-- public-mempool access through the sequencer feed,
-- historical LONG5 executable P&L,
-- strategy profitability from isolated positive samples.
+v0.8.1 still does not prove:
+- deployed atomic-executor gas,
+- transaction inclusion/capture probability,
+- profitability of V3/hooked cycles,
+- long-run positive expectancy,
+- historical executable LONG5 P&L.
 
-Promotion beyond paper research would require a real atomic executor design, adversarial simulation/testnet evidence, executor gas measurement, a sufficiently large independent opportunity sample, and observed capture/inclusion behavior.
+The next expansion, if sustained observation yields no executable-truth candidates, should increase **verified route coverage** (for example mixed V3/V4 via an atomic paper simulator) rather than weakening the micro truth gate or deleting costs to manufacture green.
