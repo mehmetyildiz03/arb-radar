@@ -366,6 +366,7 @@ async function tick(): Promise<void> {
     metadataLoaded,
     truthPairsPotential,
     truthCandidates:candidates.length,
+    truthScanFailures,
     opportunities,
     unavailable,
     scheduler:runtimeMetrics,
