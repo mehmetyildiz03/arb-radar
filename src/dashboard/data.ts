@@ -225,20 +225,20 @@ function exactFunnelCounts(db: DatabaseSync, fromMs:number, toMs:number, runId:s
   const backed=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
     FROM executable_quotes
     WHERE json_valid(payload)=1
-      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
       AND json_type(payload,'$.netProfitUsd') IN ('integer','real')${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   const positive=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
     FROM executable_quotes
     WHERE json_valid(payload)=1
-      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
       AND json_type(payload,'$.netProfitUsd') IN ('integer','real')
       AND CAST(json_extract(payload,'$.netProfitUsd') AS REAL) > 0${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   const unavailable=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
     FROM executable_quotes
     WHERE json_valid(payload)=1
-      AND CAST(json_extract(payload,'$.discoveredAtMs') AS REAL) BETWEEN ? AND ?
+      AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
       AND json_extract(payload,'$.status') = 'unavailable'${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   return {
