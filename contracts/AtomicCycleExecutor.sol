@@ -33,7 +33,7 @@ struct CallbackData {
 /// @notice Minimal research-only hookless V4 closed-cycle executor.
 /// @dev Designed for state-override simulation. No admin, storage, approvals or deployment flow.
 contract AtomicCycleExecutor {
-    address internal constant POOL_MANAGER = 0x8366a39cc670B4001a1121B8F6A443a643e40951;
+    address internal constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
     uint160 internal constant MIN_SQRT_PRICE = 4295128739;
     uint160 internal constant MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970342;
 
