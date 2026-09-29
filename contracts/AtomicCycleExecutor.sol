@@ -1,6 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+struct PoolKey {
+    address currency0;
+    address currency1;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
+}
+
+struct SwapParams {
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+}
+
+struct Hop {
+    address output;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
+}
+
+struct CallbackData {
+    bool requireProfit;
+    address recipient;
+    uint128 amountIn;
+    uint128 minProfit;
+    Hop[] hops;
+}
+
 /// @notice Minimal research-only hookless V4 closed-cycle executor.
 /// @dev Designed for state-override simulation. No admin, storage, approvals or deployment flow.
 contract AtomicCycleExecutor {
@@ -14,37 +43,6 @@ contract AtomicCycleExecutor {
     error PartialSwap(uint256 hop);
     error NotProfitable(uint256 amountIn, uint256 amountOut, uint256 minProfit);
     error InsufficientProbeBalance(uint256 needed, uint256 available);
-
-    struct PoolKey {
-        address currency0;
-        address currency1;
-        uint24 fee;
-        int24 tickSpacing;
-        address hooks;
-    }
-
-    struct SwapParams {
-        bool zeroForOne;
-        int256 amountSpecified;
-        uint160 sqrtPriceLimitX96;
-    }
-
-    struct Hop {
-        address output;
-        uint24 fee;
-        int24 tickSpacing;
-        address hooks;
-    }
-
-    struct CallbackData {
-        bool requireProfit;
-        address recipient;
-        uint128 amountIn;
-        uint128 minProfit;
-        Hop[] hops;
-    }
-
-    interfaceMarker private constant _marker = interfaceMarker.wrap(0);
 
     function executeNative(uint128 amountIn, uint128 minProfit, Hop[] calldata hops, address recipient)
         external
@@ -138,13 +136,12 @@ contract AtomicCycleExecutor {
     receive() external payable {}
 }
 
-type interfaceMarker is uint256;
 
 interface IPoolManagerLite {
     function unlock(bytes calldata data) external returns (bytes memory);
     function swap(
-        AtomicCycleExecutor.PoolKey memory key,
-        AtomicCycleExecutor.SwapParams memory params,
+        PoolKey memory key,
+        SwapParams memory params,
         bytes calldata hookData
     ) external returns (int256 swapDelta);
     function take(address currency, address to, uint256 amount) external;
