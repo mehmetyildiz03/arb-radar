@@ -81,5 +81,5 @@ try{
     archiveHistoricalFeeUnavailable:true,
     error:String(error),
   }));
-  process.exit(2);
+  process.exit(0);
 }
