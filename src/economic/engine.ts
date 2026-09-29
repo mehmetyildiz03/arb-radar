@@ -1,5 +1,4 @@
 import {
-  formatEther,
   formatUnits,
   parseUnits,
   zeroAddress,
@@ -32,6 +31,7 @@ import {
   type V4PoolState,
 } from './v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from './seed.js';
+import { calibrateResearchCost, type NitroFeeComponents } from './nitroFees.js';
 
 export interface EconomicScreen extends RouteScreen {
   source: 'same-block-v4-state';
@@ -73,6 +73,9 @@ export interface EconomicExecutionQuote extends ExecutionQuote {
   quoterGasEstimate: bigint;
   gasUnitsResearch: bigint;
   gasPriceWei: bigint;
+  costModel: 'nitro-calibrated' | 'legacy-fallback';
+  nitroFee: NitroFeeComponents | null;
+  costFallbackReason: string | null;
   infinitesimalEdgeBps: number;
   costBreakdown: QuoteCostBreakdown;
   green: boolean;
@@ -316,17 +319,24 @@ export async function quotePreparedEconomicCandidate(
     : await baseUsdAtBlock(client,prepared.cycle.base,prepared.baseDecimals,prepared.ethUsdPrice,quoteBlock);
   const amountInRaw=inputRawForUsd(inputUsd,baseUsdPrice,prepared.baseDecimals);
   const closed=await quoteClosedCycle(client,prepared.cycle,amountInRaw,quoteBlock);
-  const gasPriceWei=await client.getGasPrice();
   const gasBufferBps=options.gasBufferBps ?? 2000;
-  const gasUnitsResearch=(closed.gasEstimate*BigInt(10_000+gasBufferBps)+9_999n)/10_000n;
+  const calibrated=await calibrateResearchCost({
+    client,
+    cycle:prepared.cycle,
+    amountIn:amountInRaw,
+    quoterGasEstimate:closed.gasEstimate,
+    ethUsdPrice:prepared.ethUsdPrice,
+    gasBufferBps,
+    fallbackExtraCostsUsd:options.extraCostsUsd,
+    blockNumber:quoteBlock,
+  });
   const outputHuman=Number(formatUnits(closed.amountOut,prepared.baseDecimals));
   const outputUsd=outputHuman*baseUsdPrice;
-  const gasUsd=Number(formatEther(gasUnitsResearch*gasPriceWei))*prepared.ethUsdPrice;
   const quote:ExecutionQuote={
     inputUsd,
     outputUsd,
-    gasUsd,
-    extraCostsUsd:options.extraCostsUsd,
+    gasUsd:calibrated.gasUsd,
+    extraCostsUsd:calibrated.extraCostsUsd,
     safetyMarginUsd:outputUsd*options.safetyBps/10_000,
   };
   const costBreakdown=quoteCostBreakdown(quote);
@@ -344,16 +354,22 @@ export async function quotePreparedEconomicCandidate(
     amountInRaw,
     amountOutRaw:closed.amountOut,
     quoterGasEstimate:closed.gasEstimate,
-    gasUnitsResearch,
-    gasPriceWei,
+    gasUnitsResearch:calibrated.gasUnitsResearch,
+    gasPriceWei:calibrated.gasPriceWei,
+    costModel:calibrated.mode,
+    nitroFee:calibrated.nitro,
+    costFallbackReason:calibrated.fallbackReason,
     infinitesimalEdgeBps:prepared.truth.infinitesimalEdgeBps,
     costBreakdown,
     green:costBreakdown.netProfitUsd>0,
     assumptions:[
       'Closed cycle starts and ends in the same base asset',
       'All cycle hops quoted statefully by canonical Robinhood V4Quoter at one block',
-      'V4Quoter gas estimate is a research proxy, not a deployed executor gas measurement',
-      `Research gas buffer ${gasBufferBps/100}% plus explicit extra cost and safety margin`,
+      'V4Quoter gas estimate remains a swap-execution proxy, not deployed executor gas',
+      calibrated.mode==='nitro-calibrated'
+        ? `Nitro NodeInterface adds transaction child-gas overhead and measured parent-data fee; gas buffer ${gasBufferBps/100}%`
+        : `Nitro calibration unavailable; conservative legacy extra-cost fallback retained; gas buffer ${gasBufferBps/100}%`,
+      '1% output safety margin remains unchanged in v0.8.3',
       'Paper result only; no transaction inclusion or realized profit',
     ],
   };

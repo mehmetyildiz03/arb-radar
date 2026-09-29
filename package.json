@@ -1,6 +1,6 @@
 {
   "name": "arb-radar",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "type": "module",
   "description": "Paper-only multi-pool arbitrage radar for Par on Robinhood Chain",
@@ -18,7 +18,9 @@
     "dashboard:smoke": "npm run build && node scripts/dashboard-smoke.mjs",
     "ui:check": "node --check dashboard/app.js",
     "live:cycle-smoke": "npm run build && node scripts/v08-live-cycle-smoke.mjs",
-    "diagnose:truth": "npm run build && node scripts/v081-truth-diagnostic.mjs"
+    "diagnose:truth": "npm run build && node scripts/v081-truth-diagnostic.mjs",
+    "live:nitro-smoke": "npm run build && node scripts/v083-nitro-fee-smoke.mjs",
+    "recheck:historical-cost": "npm run build && node scripts/v083-historical-cost-recheck.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

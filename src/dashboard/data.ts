@@ -30,6 +30,8 @@ interface OpportunitySummary extends Record<string, unknown> {
   firstProbeInputUsd: number | null;
   firstProbeNetProfitUsd: number | null;
   firstProbeCostBreakdown: QuoteCostBreakdown | null;
+  firstProbeCostModel: string | null;
+  firstProbeCostFallbackReason: string | null;
   firstProbeProfile: Record<string, number> | null;
   latestInputUsd: number | null;
   latestNetProfitUsd: number | null;
@@ -38,6 +40,8 @@ interface OpportunitySummary extends Record<string, unknown> {
   bestObservedInputUsd: number | null;
   bestObservedNetProfitUsd: number | null;
   bestObservedCostBreakdown: QuoteCostBreakdown | null;
+  bestObservedCostModel: string | null;
+  bestObservedCostFallbackReason: string | null;
   bestObservedProfile: Record<string, number> | null;
   quoteCount: number;
   blockNumber: unknown;
@@ -419,6 +423,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
     const quote = payload.quote as Record<string,unknown> | undefined;
     const netProfitUsd = num(payload.netProfitUsd);
     const breakdown = quoteBreakdownFromPayload(payload,quote);
+    const costModel = typeof quote?.costModel === 'string' ? quote.costModel : null;
+    const costFallbackReason = typeof quote?.costFallbackReason === 'string' ? quote.costFallbackReason : null;
     const profile = quoteProfile(quote);
     const isUnavailable = payload.status === 'unavailable';
     const verifiedClosedCycle = payload.verifiedClosedCycle === true || quote?.verifiedClosedCycle === true;
@@ -446,6 +452,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
         firstProbeInputUsd: quote ? num(quote.inputUsd) : null,
         firstProbeNetProfitUsd: netProfitUsd,
         firstProbeCostBreakdown: breakdown,
+        firstProbeCostModel: costModel,
+        firstProbeCostFallbackReason: costFallbackReason,
         firstProbeProfile: profile,
         latestInputUsd: quote ? num(quote.inputUsd) : null,
         latestNetProfitUsd: netProfitUsd,
@@ -454,6 +462,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
         bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
         bestObservedNetProfitUsd: netProfitUsd,
         bestObservedCostBreakdown: breakdown,
+        bestObservedCostModel: costModel,
+        bestObservedCostFallbackReason: costFallbackReason,
         bestObservedProfile: profile,
         quoteCount: netProfitUsd === null ? 0 : 1,
         blockNumber: quote?.blockNumber ?? row.block_number,
@@ -486,6 +496,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
           current.firstProbeInputUsd = quote ? num(quote.inputUsd) : null;
           current.firstProbeNetProfitUsd = netProfitUsd;
           current.firstProbeCostBreakdown = breakdown;
+          current.firstProbeCostModel = costModel;
+          current.firstProbeCostFallbackReason = costFallbackReason;
           current.firstProbeProfile = profile;
           current._firstProbeId = row.id;
         }
@@ -493,6 +505,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
           current.bestObservedNetProfitUsd = netProfitUsd;
           current.bestObservedInputUsd = quote ? num(quote.inputUsd) : null;
           current.bestObservedCostBreakdown = breakdown;
+          current.bestObservedCostModel = costModel;
+          current.bestObservedCostFallbackReason = costFallbackReason;
           current.bestObservedProfile = profile;
           current._bestTimestampMs = row.timestamp_ms;
         }
@@ -551,6 +565,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       firstProbeInputUsd: quote ? num(quote.inputUsd) : null,
       firstProbeNetProfitUsd: netProfitUsd,
       firstProbeCostBreakdown: breakdown,
+      firstProbeCostModel: typeof quote?.costModel==='string'?quote.costModel:null,
+      firstProbeCostFallbackReason: typeof quote?.costFallbackReason==='string'?quote.costFallbackReason:null,
       firstProbeProfile: profile,
       latestInputUsd: quote ? num(quote.inputUsd) : null,
       latestNetProfitUsd: netProfitUsd,
@@ -559,6 +575,8 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       bestObservedInputUsd: quote ? num(quote.inputUsd) : null,
       bestObservedNetProfitUsd: netProfitUsd,
       bestObservedCostBreakdown: breakdown,
+      bestObservedCostModel: typeof quote?.costModel==='string'?quote.costModel:null,
+      bestObservedCostFallbackReason: typeof quote?.costFallbackReason==='string'?quote.costFallbackReason:null,
       bestObservedProfile: profile,
       quoteCount: 1,
       blockNumber: quote?.blockNumber ?? row.block_number,

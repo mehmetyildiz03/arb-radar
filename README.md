@@ -1,4 +1,4 @@
-# Arb Radar v0.8.2 — Economic Truth Engine
+# Arb Radar v0.8.3 — Economic Truth Engine
 
 Paper-only research radar for Par multi-market dislocations on Robinhood Chain. The application has no wallet, private key, signer, transaction submission, or automated trading path.
 
@@ -90,11 +90,19 @@ The constant-product model remains available only as an **analytical seed** unde
 
 ## Paper cost model
 
-For an exact closed-cycle quote:
+For an exact closed-cycle quote, v0.8.3 uses:
 
-`paper net = base output value - base input value - research gas proxy - $0.05 allowance - 1% output safety margin`
+`paper net = base output value - base input value - calibrated research gas - parent-data fee - 1% safety margin`
 
-Current gas handling uses the V4Quoter gas estimate with a 20% research buffer and the current gas price, valued through ETH/USD. This is **not** a deployed atomic executor gas measurement and is deliberately labeled as an assumption.
+The engine queries Nitro's NodeInterface `gasEstimateComponents` with representative executor calldata. When available:
+
+- transaction child-gas overhead is added to the V4Quoter swap-gas proxy,
+- the existing 20% research gas buffer is applied,
+- the parent/data fee is measured from Nitro instead of using a fixed dollar allowance.
+
+If NodeInterface is unavailable or invalid, the quote fails closed to the previous conservative model: V4Quoter gas + 20% and the legacy $0.05 allowance. The dashboard identifies each quote as **NITRO CALIBRATED** or **LEGACY FALLBACK** and exposes the fallback reason.
+
+The 1% safety margin remains unchanged. V4Quoter gas is still **not** a deployed atomic-executor gas measurement; state-override executor simulation is the next accuracy target.
 
 Coinbase ETH/USD is used only to report common USD values. A non-ETH base is valued at the same canonical block through Par's onchain QuotePricer and then combined with ETH/USD. The actual arbitrage quote itself remains same-base raw units.
 
@@ -162,4 +170,4 @@ The important remaining limits are:
 - a positive sample does not establish strategy-level expectancy;
 - LONG5 historical data still lacks historical executable same-block state needed to reconstruct past closed-cycle P&L honestly.
 
-See [architecture](docs/ARCHITECTURE.md), [v0.8.2 depth audit](docs/V0.8.2_AUDIT.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).
+See [architecture](docs/ARCHITECTURE.md), [v0.8.3 cost audit](docs/V0.8.3_AUDIT.md), [v0.8.2 depth audit](docs/V0.8.2_AUDIT.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).

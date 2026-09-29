@@ -105,7 +105,7 @@ function renderSelectedCandidate(){
     setText('selectedCandidateTitle','Aday seçilmedi');
     setText('selectedCandidateMeta','Tablodan bir candidate seç.');
     setText('selectedCandidateStatus','—');
-    renderBreakdown('probe',null);renderBreakdown('best',null);return;
+    renderBreakdown('probe',null);renderBreakdown('best',null);setText('probeCostModel','—');setText('bestCostModel','—');return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
   const depth=depthEdgePct(item);
@@ -113,6 +113,10 @@ function renderSelectedCandidate(){
   setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
+  setText('probeCostModel',item.firstProbeCostModel==='nitro-calibrated'?'NITRO CALIBRATED':item.firstProbeCostModel==='legacy-fallback'?'LEGACY FALLBACK':'—');
+  setText('bestCostModel',item.bestObservedCostModel==='nitro-calibrated'?'NITRO CALIBRATED':item.bestObservedCostModel==='legacy-fallback'?'LEGACY FALLBACK':'—');
+  const fallback=[item.firstProbeCostFallbackReason,item.bestObservedCostFallbackReason].filter(Boolean)[0];
+  if(fallback) setText('selectedCandidateMeta',$('selectedCandidateMeta').textContent+' · cost fallback: '+short(fallback));
 }
 function renderTimings(items){
   const root=$('timings');clear(root);$('timingEmpty').style.display=items.length?'none':'block';
