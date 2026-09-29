@@ -1,14 +1,6 @@
 name: Truth Diagnostic
 
 on:
-  push:
-    branches: [v0.8.3-nitro-cost-calibration]
-    paths:
-      - 'src/**'
-      - 'scripts/v081-truth-diagnostic.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/truth-diagnostic.yml'
   workflow_dispatch:
 
 permissions:
