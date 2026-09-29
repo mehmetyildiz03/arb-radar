@@ -118,7 +118,7 @@
             <div class="cost-row"><span>Router output</span><strong id="probeOutput">—</strong></div>
             <div class="cost-row emphasis"><span>Quoted edge</span><strong id="probeGross">—</strong></div>
             <div class="cost-row"><span>Gas</span><strong id="probeGas">—</strong></div>
-            <div class="cost-row"><span>Extra allowance</span><strong id="probeExtra">—</strong></div>
+            <div class="cost-row"><span>Parent data / fallback</span><strong id="probeExtra">—</strong></div><div class="cost-row"><span>Cost model</span><strong id="probeCostModel">—</strong></div>
             <div class="cost-row"><span>Safety margin</span><strong id="probeSafety">—</strong></div>
             <div class="cost-row total"><span>Net paper</span><strong id="probeNet2">—</strong></div>
             <p class="reason" id="probeReason">—</p>
@@ -129,13 +129,13 @@
             <div class="cost-row"><span>Router output</span><strong id="bestOutput">—</strong></div>
             <div class="cost-row emphasis"><span>Quoted edge</span><strong id="bestGross">—</strong></div>
             <div class="cost-row"><span>Gas</span><strong id="bestGas">—</strong></div>
-            <div class="cost-row"><span>Extra allowance</span><strong id="bestExtra">—</strong></div>
+            <div class="cost-row"><span>Parent data / fallback</span><strong id="bestExtra">—</strong></div><div class="cost-row"><span>Cost model</span><strong id="bestCostModel">—</strong></div>
             <div class="cost-row"><span>Safety margin</span><strong id="bestSafety">—</strong></div>
             <div class="cost-row total"><span>Net paper</span><strong id="bestNet2">—</strong></div>
             <p class="reason" id="bestReason">—</p>
           </div>
         </div>
-        <p class="embedded-note">Pool ücretleri, routing ve price impact router output’unun içinde zaten yer alır; mevcut simulator bunları güvenilir biçimde ayrı sayısal kalemlere bölemediği için burada ayrı “slippage/fee maliyeti” uydurulmaz.</p>
+        <p class="embedded-note">Pool ücretleri, routing ve price impact router output’unun içinde zaten yer alır. v0.8.3’te “Parent data / fallback” Nitro NodeInterface ile ölçülen parent-data ücretidir; NodeInterface kullanılamazsa yalnız o quote için konservatif legacy fallback gösterilir.</p>
       </article>
 
       <article class="panel profiler-panel">
