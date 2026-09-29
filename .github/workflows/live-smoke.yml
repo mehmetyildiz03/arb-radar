@@ -2,7 +2,7 @@ name: Live Smoke
 
 on:
   push:
-    branches: [main]
+    branches: [main, v0.8.3-nitro-cost-calibration]
     paths:
       - 'src/**'
       - 'package.json'
@@ -50,3 +50,8 @@ jobs:
         env:
           TRUTH_LAUNCH_LIMIT: 12
         run: node scripts/v08-live-cycle-smoke.mjs
+
+      - name: Run Nitro fee calibration smoke
+        env:
+          TRUTH_LAUNCH_LIMIT: 12
+        run: node scripts/v083-nitro-fee-smoke.mjs
