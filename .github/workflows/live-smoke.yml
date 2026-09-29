@@ -55,3 +55,6 @@ jobs:
         env:
           TRUTH_LAUNCH_LIMIT: 12
         run: node scripts/v083-nitro-fee-smoke.mjs
+
+      - name: Recheck recorded gross-positive sample with historical Nitro fees
+        run: node scripts/v083-historical-cost-recheck.mjs
