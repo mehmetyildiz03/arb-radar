@@ -25,6 +25,7 @@ import {
 } from '../dist/economic/v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
 import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js';
+import { encodeRepresentativeExecutorCall, readNitroFeeComponents, calibrateResearchCost } from '../dist/economic/nitroFees.js';
 import { classifyV4QuoteError } from '../dist/economic/v4Truth.js';
 
 const token = '0x1111111111111111111111111111111111111111';
@@ -730,4 +731,95 @@ test('depth-aware sizing preserves the first liquidity boundary after a smaller 
   assert.equal(result.firstLiquidityFailureUsd,.1);
   assert.equal(result.stoppedReason,'liquidity-boundary');
   assert.equal(result.bestQuote.inputUsd,.075);
+});
+
+
+test('Nitro fee components separate child gas from parent data gas deterministically', async () => {
+  const cycle={
+    base:zeroAddress,
+    hops:[{
+      output:pair,
+      key:poolKeyFor(pair,zeroAddress,3000,60),
+    }],
+  };
+  const client={
+    readContract:async args=>{
+      assert.equal(args.functionName,'gasEstimateComponents');
+      assert.equal(args.args[1],false);
+      assert.ok(typeof args.args[2]==='string'&&args.args[2].startsWith('0x'));
+      return [100000n,25000n,20000000n,1000000000n];
+    },
+  };
+  const components=await readNitroFeeComponents(client,cycle,1000n,3000,50n);
+  assert.equal(components.gasEstimate,100000n);
+  assert.equal(components.gasEstimateForL1,25000n);
+  assert.equal(components.childGasEstimate,75000n);
+  assert.equal(components.parentDataCostWei,500000000000n);
+  assert.equal(Number(components.parentDataCostUsd.toFixed(8)),.0015);
+  assert.ok(components.calldataBytes>4);
+});
+
+test('Nitro-calibrated research cost adds tx child overhead and measured parent fee', async () => {
+  const cycle={
+    base:zeroAddress,
+    hops:[{
+      output:pair,
+      key:poolKeyFor(pair,zeroAddress,3000,60),
+    }],
+  };
+  const client={
+    readContract:async()=>[100000n,25000n,20000000n,1000000000n],
+    getGasPrice:async()=>30000000n,
+  };
+  const cost=await calibrateResearchCost({
+    client,cycle,amountIn:1000n,quoterGasEstimate:120000n,ethUsdPrice:3000,
+    gasBufferBps:2000,fallbackExtraCostsUsd:.05,blockNumber:50n,
+  });
+  assert.equal(cost.mode,'nitro-calibrated');
+  assert.equal(cost.gasUnitsResearch,234000n);
+  assert.equal(cost.gasPriceWei,30000000n);
+  assert.equal(Number(cost.gasUsd.toFixed(8)),.02106);
+  assert.equal(Number(cost.extraCostsUsd.toFixed(8)),.0015);
+  assert.equal(cost.fallbackReason,null);
+});
+
+test('Nitro calibration fails closed to the legacy allowance when NodeInterface is unavailable', async () => {
+  const cycle={
+    base:zeroAddress,
+    hops:[{
+      output:pair,
+      key:poolKeyFor(pair,zeroAddress,3000,60),
+    }],
+  };
+  const client={
+    readContract:async()=>{throw Error('node interface unavailable')},
+    getGasPrice:async()=>30000000n,
+  };
+  const cost=await calibrateResearchCost({
+    client,cycle,amountIn:1000n,quoterGasEstimate:120000n,ethUsdPrice:3000,
+    gasBufferBps:2000,fallbackExtraCostsUsd:.05,blockNumber:50n,
+  });
+  assert.equal(cost.mode,'legacy-fallback');
+  assert.equal(cost.gasUnitsResearch,144000n);
+  assert.equal(Number(cost.gasUsd.toFixed(8)),.01296);
+  assert.equal(cost.extraCostsUsd,.05);
+  assert.match(cost.fallbackReason,/node interface unavailable/);
+});
+
+test('representative executor calldata grows with route complexity', () => {
+  const one={
+    base:zeroAddress,
+    hops:[{output:pair,key:poolKeyFor(pair,zeroAddress,3000,60)}],
+  };
+  const mid='0x4444444444444444444444444444444444444444';
+  const two={
+    base:zeroAddress,
+    hops:[
+      {output:mid,key:poolKeyFor(mid,zeroAddress,3000,60)},
+      {output:pair,key:poolKeyFor(pair,mid,3000,60)},
+    ],
+  };
+  const a=encodeRepresentativeExecutorCall(one,1000n);
+  const b=encodeRepresentativeExecutorCall(two,1000n);
+  assert.ok(b.length>a.length);
 });
