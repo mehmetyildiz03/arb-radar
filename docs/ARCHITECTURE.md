@@ -1,4 +1,4 @@
-# Arb Radar architecture — v0.8.2 Economic Truth Engine
+# Arb Radar architecture — v0.8.3 Economic Truth Engine
 
 ## Objective
 
@@ -73,14 +73,19 @@ This makes successful shallow quotes durable research evidence even when the nex
 
 ### 8. Cost model
 
-`economic/engine.ts` converts the exact closed-cycle output to reporting USD and applies:
-- V4Quoter gas estimate,
-- 20% gas research buffer,
-- current gas price,
-- $0.05 explicit extra allowance,
+`economic/nitroFees.ts` calibrates transaction-level fee components through the Nitro NodeInterface precompile.
+
+For each exact quote, representative executor calldata is passed to `gasEstimateComponents`. When valid, the paper model combines:
+- V4Quoter gas estimate as a swap-execution proxy,
+- Nitro child-gas transaction overhead,
+- 20% research gas buffer,
+- current/base fee,
+- measured Nitro parent/data fee,
 - 1% output safety margin.
 
-The resulting field is paper research P&L. V4Quoter gas is not a deployed atomic-executor gas measurement.
+If NodeInterface fails, the quote is explicitly marked `legacy-fallback` and retains the old $0.05 conservative allowance. No calibration failure silently creates a cheaper result.
+
+The resulting field remains paper research P&L. V4Quoter gas plus representative Nitro overhead is still not exact deployed atomic-executor gas.
 
 ### 9. Lifecycle and scheduler
 
@@ -108,7 +113,7 @@ SQLite schema version 4 includes:
 - radar_runtime
 - radar_runs
 
-v0.8.2 observations carry run identity in payloads. Existing databases remain append-only/create-if-missing.
+v0.8.3 uses the run identity `0.8.3-economic-truth-nitro-calibrated`; observations carry that identity in payloads. Existing databases remain append-only/create-if-missing.
 
 ### 11. Dashboard
 
