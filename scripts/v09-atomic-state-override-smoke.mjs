@@ -87,8 +87,8 @@ if(!chosen){
   process.exit(0);
 }
 
-const executor='0x000000000000000000000000000000000000A11C';
-const caller='0x000000000000000000000000000000000000bEEF';
+const executor='0x000000000000000000000000000000000000a11c';
+const caller='0x000000000000000000000000000000000000beef';
 const hops=chosen.cycle.hops.map(h=>({
   output:h.output,
   fee:h.key.fee,
