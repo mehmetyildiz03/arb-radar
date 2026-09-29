@@ -1,0 +1,35 @@
+name: Atomic Executor Smoke
+
+on:
+  push:
+    branches: [v0.9-atomic-executor-sim]
+    paths:
+      - 'contracts/AtomicCycleExecutor.sol'
+      - 'scripts/v09-atomic-state-override-smoke.mjs'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/atomic-sim.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  state-override-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install pinned CI-only Solidity compiler
+        run: npm install --no-save --package-lock=false solc@0.8.26
+      - run: npm run build
+      - name: Compile and state-override the atomic executor
+        env:
+          TRUTH_LAUNCH_LIMIT: 30
+        run: node scripts/v09-atomic-state-override-smoke.mjs
