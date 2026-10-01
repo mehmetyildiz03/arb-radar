@@ -16,7 +16,7 @@ export const nodeInterfaceAbi = parseAbi([
 ]);
 
 export const representativeExecutorAbi = parseAbi([
-  'function executeCycle(address base, uint128 amountIn, uint128 minAmountOut, (address intermediateCurrency,uint24 fee,int24 tickSpacing,address hooks,bytes hookData)[] path)',
+  'function executeCycle(address base, uint128 amountIn, uint128 minProfit, (address intermediateCurrency,uint24 fee,int24 tickSpacing,address hooks,bytes hookData)[] path)',
 ]);
 
 export interface NitroFeeComponents {
@@ -36,17 +36,17 @@ export interface NitroFeeComponents {
 export function encodeRepresentativeExecutorCall(
   cycle: ClosedCycle,
   amountIn: bigint,
-  minAmountOut = amountIn,
+  minProfit = 1n,
 ): Hex {
   if (amountIn <= 0n || amountIn > 2n**128n-1n) throw new Error('Invalid uint128 representative input');
-  if (minAmountOut < 0n || minAmountOut > 2n**128n-1n) throw new Error('Invalid uint128 representative min output');
+  if (minProfit <= 0n || minProfit > 2n**128n-1n) throw new Error('Invalid uint128 representative min profit');
   return encodeFunctionData({
     abi: representativeExecutorAbi,
     functionName: 'executeCycle',
     args: [
       cycle.base,
       amountIn,
-      minAmountOut,
+      minProfit,
       cycle.hops.map(hop => ({
         intermediateCurrency: hop.output,
         fee: hop.key.fee,
@@ -58,20 +58,19 @@ export function encodeRepresentativeExecutorCall(
   });
 }
 
-export async function readNitroFeeComponents(
+export async function readNitroFeeComponentsForCall(
   client: PublicClient,
-  cycle: ClosedCycle,
-  amountIn: bigint,
+  target: Address,
+  data: Hex,
   ethUsdPrice: number,
   blockNumber?: bigint,
 ): Promise<NitroFeeComponents> {
   if (!Number.isFinite(ethUsdPrice) || ethUsdPrice <= 0) throw new Error('Invalid ETH/USD valuation');
-  const data = encodeRepresentativeExecutorCall(cycle, amountIn);
   const result = await client.readContract({
     address: NITRO_NODE_INTERFACE,
     abi: nodeInterfaceAbi,
     functionName: 'gasEstimateComponents',
-    args: [NITRO_FEE_PROBE_TARGET, false, data],
+    args: [target, false, data],
     ...(blockNumber === undefined ? {} : { blockNumber }),
   });
   const [gasEstimate, gasEstimateForL1, baseFeeWei, l1BaseFeeEstimateWei] = result;
@@ -98,19 +97,58 @@ export async function readNitroFeeComponents(
     parentDataCostEth,
     parentDataCostUsd,
     calldataBytes,
-    target: NITRO_FEE_PROBE_TARGET,
+    target,
     source: 'nitro-node-interface',
   };
 }
 
+export async function readNitroFeeComponents(
+  client: PublicClient,
+  cycle: ClosedCycle,
+  amountIn: bigint,
+  ethUsdPrice: number,
+  blockNumber?: bigint,
+): Promise<NitroFeeComponents> {
+  const data = encodeRepresentativeExecutorCall(cycle, amountIn, 1n);
+  return readNitroFeeComponentsForCall(
+    client,
+    NITRO_FEE_PROBE_TARGET,
+    data,
+    ethUsdPrice,
+    blockNumber,
+  );
+}
+
+export type ResearchCostMode =
+  | 'atomic-override-nitro-calibrated'
+  | 'atomic-override-parent-fallback'
+  | 'quoter-proxy-nitro-calibrated'
+  | 'legacy-fallback';
+
+export type ExecutionGasSource =
+  | 'state-override-estimateGas'
+  | 'v4quoter-plus-nitro-child'
+  | 'v4quoter-legacy';
+
 export interface CalibratedResearchCost {
-  mode: 'nitro-calibrated' | 'legacy-fallback';
+  mode: ResearchCostMode;
+  executionGasSource: ExecutionGasSource;
   gasUnitsResearch: bigint;
   gasPriceWei: bigint;
   gasUsd: number;
   extraCostsUsd: number;
   nitro: NitroFeeComponents | null;
   fallbackReason: string | null;
+}
+
+function bufferedGas(gas: bigint, gasBufferBps: number): bigint {
+  return (gas * BigInt(10_000 + Math.floor(gasBufferBps)) + 9_999n) / 10_000n;
+}
+
+function gasCostUsd(gasUnits: bigint, gasPriceWei: bigint, ethUsdPrice: number): number {
+  const value = Number(formatEther(gasUnits * gasPriceWei)) * ethUsdPrice;
+  if (!Number.isFinite(value) || value < 0) throw new Error('Invalid gas USD');
+  return value;
 }
 
 export async function calibrateResearchCost(options: {
@@ -122,14 +160,52 @@ export async function calibrateResearchCost(options: {
   gasBufferBps: number;
   fallbackExtraCostsUsd: number;
   blockNumber?: bigint;
+  executorGasEstimate?: bigint | null;
+  executorTarget?: Address;
+  executorCalldata?: Hex;
 }): Promise<CalibratedResearchCost> {
   const {
     client,cycle,amountIn,quoterGasEstimate,ethUsdPrice,gasBufferBps,
-    fallbackExtraCostsUsd,blockNumber,
+    fallbackExtraCostsUsd,blockNumber,executorGasEstimate,executorTarget,executorCalldata,
   } = options;
   if (quoterGasEstimate <= 0n) throw new Error('Invalid quoter gas estimate');
   if (!Number.isFinite(gasBufferBps) || gasBufferBps < 0 || gasBufferBps > 10_000) throw new Error('Invalid gas buffer');
   if (!Number.isFinite(fallbackExtraCostsUsd) || fallbackExtraCostsUsd < 0) throw new Error('Invalid fallback extra cost');
+
+  if (executorGasEstimate !== undefined && executorGasEstimate !== null && executorGasEstimate > 0n) {
+    if (!executorTarget || !executorCalldata) throw new Error('Executor gas estimate requires target and calldata');
+    try {
+      const [nitro,rpcGasPrice] = await Promise.all([
+        readNitroFeeComponentsForCall(client,executorTarget,executorCalldata,ethUsdPrice,blockNumber),
+        client.getGasPrice(),
+      ]);
+      const gasPriceWei = rpcGasPrice > nitro.baseFeeWei ? rpcGasPrice : nitro.baseFeeWei;
+      const gasUnitsResearch = bufferedGas(executorGasEstimate,gasBufferBps);
+      return {
+        mode:'atomic-override-nitro-calibrated',
+        executionGasSource:'state-override-estimateGas',
+        gasUnitsResearch,
+        gasPriceWei,
+        gasUsd:gasCostUsd(gasUnitsResearch,gasPriceWei,ethUsdPrice),
+        extraCostsUsd:nitro.parentDataCostUsd,
+        nitro,
+        fallbackReason:null,
+      };
+    } catch (error) {
+      const gasPriceWei = await client.getGasPrice();
+      const gasUnitsResearch = bufferedGas(executorGasEstimate,gasBufferBps);
+      return {
+        mode:'atomic-override-parent-fallback',
+        executionGasSource:'state-override-estimateGas',
+        gasUnitsResearch,
+        gasPriceWei,
+        gasUsd:gasCostUsd(gasUnitsResearch,gasPriceWei,ethUsdPrice),
+        extraCostsUsd:fallbackExtraCostsUsd,
+        nitro:null,
+        fallbackReason:String(error),
+      };
+    }
+  }
 
   try {
     const [nitro,rpcGasPrice] = await Promise.all([
@@ -138,28 +214,26 @@ export async function calibrateResearchCost(options: {
     ]);
     const gasPriceWei = rpcGasPrice > nitro.baseFeeWei ? rpcGasPrice : nitro.baseFeeWei;
     const preBufferGas = quoterGasEstimate + nitro.childGasEstimate;
-    const gasUnitsResearch = (preBufferGas * BigInt(10_000 + Math.floor(gasBufferBps)) + 9_999n) / 10_000n;
-    const gasUsd = Number(formatEther(gasUnitsResearch * gasPriceWei)) * ethUsdPrice;
-    if (!Number.isFinite(gasUsd) || gasUsd < 0) throw new Error('Invalid calibrated gas USD');
+    const gasUnitsResearch = bufferedGas(preBufferGas,gasBufferBps);
     return {
-      mode:'nitro-calibrated',
+      mode:'quoter-proxy-nitro-calibrated',
+      executionGasSource:'v4quoter-plus-nitro-child',
       gasUnitsResearch,
       gasPriceWei,
-      gasUsd,
+      gasUsd:gasCostUsd(gasUnitsResearch,gasPriceWei,ethUsdPrice),
       extraCostsUsd:nitro.parentDataCostUsd,
       nitro,
       fallbackReason:null,
     };
   } catch (error) {
     const gasPriceWei = await client.getGasPrice();
-    const gasUnitsResearch = (quoterGasEstimate * BigInt(10_000 + Math.floor(gasBufferBps)) + 9_999n) / 10_000n;
-    const gasUsd = Number(formatEther(gasUnitsResearch * gasPriceWei)) * ethUsdPrice;
-    if (!Number.isFinite(gasUsd) || gasUsd < 0) throw error;
+    const gasUnitsResearch = bufferedGas(quoterGasEstimate,gasBufferBps);
     return {
       mode:'legacy-fallback',
+      executionGasSource:'v4quoter-legacy',
       gasUnitsResearch,
       gasPriceWei,
-      gasUsd,
+      gasUsd:gasCostUsd(gasUnitsResearch,gasPriceWei,ethUsdPrice),
       extraCostsUsd:fallbackExtraCostsUsd,
       nitro:null,
       fallbackReason:String(error),
