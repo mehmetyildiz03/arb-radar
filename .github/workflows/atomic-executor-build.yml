@@ -2,9 +2,16 @@ name: Atomic Executor Build
 
 on:
   push:
-    branches: [v0.9-atomic-override]
+    branches: [main]
     paths:
       - 'contracts/AtomicCycleExecutor.sol'
+      - 'contracts/AtomicCycleExecutor.artifact.json'
+      - '.github/workflows/atomic-executor-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'contracts/AtomicCycleExecutor.sol'
+      - 'contracts/AtomicCycleExecutor.artifact.json'
       - '.github/workflows/atomic-executor-build.yml'
   workflow_dispatch:
 
