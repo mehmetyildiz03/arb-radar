@@ -223,7 +223,7 @@ async function tick(): Promise<void> {
           base:quote.base,
           baseSymbol:quote.baseSymbol,
           hopCount:quote.hopCount,
-        }),{timestampMs:Date.now(),blockNumber:quote.blockNumber,source:'uniswap:v4-quoter'});
+        }),{timestampMs:Date.now(),blockNumber:quote.blockNumber,source:'arb-radar:v0.9-atomic-paper'});
       };
 
       const {best,samples,timing}=await measureCandidate({
@@ -245,8 +245,8 @@ async function tick(): Promise<void> {
               discoveredAtMs,
               depthFailure:{phase:'probe-or-lifecycle',inputUsd:trackedInput,...failure},
               verifiedClosedCycle:true,
-              engine:'v0.8-economic-truth',
-            }),{timestampMs:Date.now(),blockNumber:null,source:'uniswap:v4-quoter'});
+              engine:'v0.9-economic-truth-atomic-override',
+            }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:v0.9-atomic-paper'});
             throw error;
           }
         },
@@ -272,8 +272,8 @@ async function tick(): Promise<void> {
                 ...failure.failure,
               },
               verifiedClosedCycle:true,
-              engine:'v0.8-economic-truth',
-            }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'uniswap:v4-quoter'}),
+              engine:'v0.9-economic-truth-atomic-override',
+            }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:v0.9-atomic-paper'}),
           });
           const bestQuote=depth.bestQuote;
           const optimized=bestQuote?optimizedFromQuote(context,bestQuote):null;
@@ -289,7 +289,7 @@ async function tick(): Promise<void> {
               bestNetProfitUsd:bestQuote?.costBreakdown.netProfitUsd??null,
             },
             verifiedClosedCycle:true,
-            engine:'v0.8-economic-truth',
+            engine:'v0.9-economic-truth-atomic-override',
           }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:economic-truth'});
           return optimized?{
             ...optimized,
@@ -303,16 +303,16 @@ async function tick(): Promise<void> {
         shouldSize:q=>q.outputUsd>q.inputUsd,
         sizingSkipReason:'exact-depth-probe-gross-nonpositive',
         recordSample:sample=>store.record('opportunity_lifecycle',key,withRun(run,{
-          ...sample,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.8-economic-truth',
+          ...sample,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.9-economic-truth-atomic-override',
         }),{timestampMs:sample.completedMs,blockNumber:sample.quote?.blockNumber??null,source:'arb-radar:economic-truth'}),
         recordTiming:timing=>store.record('opportunity_lifecycle',key,withRun(run,{
-          measurementTiming:timing,verifiedClosedCycle:true,engine:'v0.8-economic-truth',
+          measurementTiming:timing,verifiedClosedCycle:true,engine:'v0.9-economic-truth-atomic-override',
         }),{timestampMs:monotonicClock.now(),blockNumber:null,source:'arb-radar:economic-truth'}),
       });
 
       const summary=summarizeLifecycle(samples);
       store.record('opportunity_lifecycle',key,withRun(run,{
-        best,summary,timing,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.8-economic-truth',
+        best,summary,timing,trackedInputUsd:trackedInput,verifiedClosedCycle:true,engine:'v0.9-economic-truth-atomic-override',
       }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:economic-truth'});
 
       const initial=samples[0];
@@ -352,7 +352,7 @@ async function tick(): Promise<void> {
       screen:prepared.screen,
       discoveredAtMs,
       verifiedClosedCycle:false,
-      engine:'v0.8-economic-truth',
+      engine:'v0.9-economic-truth-atomic-override',
     }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:economic-truth'});
     console.warn(json({key:result.candidate.key,truthQuoteUnavailable:String(result.reason)}));
   }
@@ -360,7 +360,7 @@ async function tick(): Promise<void> {
   const tickCompletedMs=monotonicClock.now();
   store.record('radar_runtime',`tick:${Math.floor(tickStartedMs)}`,withRun(run,{
     tickStartedMs,tickCompletedMs,durationMs:tickCompletedMs-tickStartedMs,
-    engine:'v0.8-economic-truth',
+    engine:'v0.9-economic-truth-atomic-override',
     screenBlock,
     launchesRequested:snapshots.length,
     metadataLoaded,
@@ -382,7 +382,7 @@ async function tick(): Promise<void> {
 
   console.log(json({
     paperOnly:true,
-    engine:'v0.8-economic-truth',
+    engine:'v0.9-economic-truth-atomic-override',
     runId:run.runId,
     screenBlock,
     launches:snapshots.length,
