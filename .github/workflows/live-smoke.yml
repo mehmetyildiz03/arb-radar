@@ -9,6 +9,14 @@ on:
       - 'package-lock.json'
       - '.github/workflows/live-smoke.yml'
       - 'scripts/v08-live-cycle-smoke.mjs'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/live-smoke.yml'
+      - 'scripts/v08-live-cycle-smoke.mjs'
   workflow_dispatch:
 
 permissions:
