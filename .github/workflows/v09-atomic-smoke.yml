@@ -2,7 +2,17 @@ name: v0.9 Atomic Override Smoke
 
 on:
   push:
-    branches: [v0.9-atomic-override]
+    branches: [main]
+    paths:
+      - 'src/economic/**'
+      - 'contracts/AtomicCycleExecutor.sol'
+      - 'contracts/AtomicCycleExecutor.artifact.json'
+      - 'scripts/v09-atomic-override-smoke.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/v09-atomic-smoke.yml'
+  pull_request:
+    branches: [main]
     paths:
       - 'src/economic/**'
       - 'contracts/AtomicCycleExecutor.sol'
