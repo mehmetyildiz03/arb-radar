@@ -1,10 +1,6 @@
 name: v0.9 Gross Positive Capture
 
 on:
-  push:
-    branches: [v0.9-atomic-override]
-    paths:
-      - '.github/workflows/v09-gross-positive-capture.yml'
   workflow_dispatch:
 
 permissions:
