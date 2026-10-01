@@ -208,8 +208,11 @@ export async function calibrateResearchCost(options: {
   }
 
   try {
+    const nitroPromise = executorTarget && executorCalldata
+      ? readNitroFeeComponentsForCall(client,executorTarget,executorCalldata,ethUsdPrice,blockNumber)
+      : readNitroFeeComponents(client,cycle,amountIn,ethUsdPrice,blockNumber);
     const [nitro,rpcGasPrice] = await Promise.all([
-      readNitroFeeComponents(client,cycle,amountIn,ethUsdPrice,blockNumber),
+      nitroPromise,
       client.getGasPrice(),
     ]);
     const gasPriceWei = rpcGasPrice > nitro.baseFeeWei ? rpcGasPrice : nitro.baseFeeWei;
