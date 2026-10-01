@@ -30,5 +30,6 @@ jobs:
       - run: npm run build
       - name: Verify live state-override executor path
         env:
-          TRUTH_LAUNCH_LIMIT: 16
+          TRUTH_LAUNCH_LIMIT: 30
+          ATOMIC_SMOKE_TOP: 30
         run: node scripts/v09-atomic-override-smoke.mjs
