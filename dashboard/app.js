@@ -98,6 +98,27 @@ function renderBreakdown(prefix,breakdown){
   }
   setText(prefix+'Reason',breakdown?reasonLabels[breakdown.reason]??String(breakdown.reason):'Bu candidate için sayısal executable quote yok.');
 }
+function costModelLabel(value){
+  return ({
+    'atomic-override-nitro-calibrated':'ATOMIC + NITRO',
+    'atomic-override-parent-fallback':'ATOMIC + PARENT FALLBACK',
+    'quoter-proxy-nitro-calibrated':'QUOTER PROXY + NITRO',
+    'legacy-fallback':'LEGACY FALLBACK',
+    'nitro-calibrated':'NITRO CALIBRATED'
+  })[value]??'—';
+}
+function gasSourceLabel(value){
+  return ({
+    'state-override-estimateGas':'ATOMIC OVERRIDE GAS',
+    'v4quoter-plus-nitro-child':'QUOTER + NITRO CHILD',
+    'v4quoter-legacy':'QUOTER LEGACY'
+  })[value]??'—';
+}
+function gasCompare(quoter,executor){
+  const q=quoter??'—',e=executor??'—';
+  return q+' / '+e;
+}
+
 function renderSelectedCandidate(){
   ensureSelection();
   const item=(state.data?.opportunities??[]).find(x=>x.key===state.selectedKey);
@@ -105,7 +126,9 @@ function renderSelectedCandidate(){
     setText('selectedCandidateTitle','Aday seçilmedi');
     setText('selectedCandidateMeta','Tablodan bir candidate seç.');
     setText('selectedCandidateStatus','—');
-    renderBreakdown('probe',null);renderBreakdown('best',null);setText('probeCostModel','—');setText('bestCostModel','—');return;
+    renderBreakdown('probe',null);renderBreakdown('best',null);
+    for(const id of ['probeCostModel','bestCostModel','probeAtomic','bestAtomic','probeGasSource','bestGasSource','probeGasCompare','bestGasCompare'])setText(id,'—');
+    return;
   }
   setText('selectedCandidateTitle',(item.buyMarket??'?')+' → '+(item.sellMarket??'?')+' · '+short(item.token));
   const depth=depthEdgePct(item);
@@ -113,8 +136,14 @@ function renderSelectedCandidate(){
   setText('selectedCandidateStatus',item.status==='positive'&&item.verifiedClosedCycle?'VERIFIED POSITIVE':item.status==='unavailable'?'UNAVAILABLE':item.verifiedClosedCycle?'VERIFIED NEGATIVE':'LEGACY / UNVERIFIED');
   renderBreakdown('probe',item.firstProbeCostBreakdown);
   renderBreakdown('best',item.bestObservedCostBreakdown);
-  setText('probeCostModel',item.firstProbeCostModel==='nitro-calibrated'?'NITRO CALIBRATED':item.firstProbeCostModel==='legacy-fallback'?'LEGACY FALLBACK':'—');
-  setText('bestCostModel',item.bestObservedCostModel==='nitro-calibrated'?'NITRO CALIBRATED':item.bestObservedCostModel==='legacy-fallback'?'LEGACY FALLBACK':'—');
+  setText('probeCostModel',costModelLabel(item.firstProbeCostModel));
+  setText('bestCostModel',costModelLabel(item.bestObservedCostModel));
+  setText('probeAtomic',item.firstProbeAtomicVerified?'ATOMIC VERIFIED':'QUOTER ONLY');
+  setText('bestAtomic',item.bestObservedAtomicVerified?'ATOMIC VERIFIED':'QUOTER ONLY');
+  setText('probeGasSource',gasSourceLabel(item.firstProbeExecutionGasSource));
+  setText('bestGasSource',gasSourceLabel(item.bestObservedExecutionGasSource));
+  setText('probeGasCompare',gasCompare(item.firstProbeQuoterGasEstimate,item.firstProbeExecutorGasEstimate));
+  setText('bestGasCompare',gasCompare(item.bestObservedQuoterGasEstimate,item.bestObservedExecutorGasEstimate));
   const fallback=[item.firstProbeCostFallbackReason,item.bestObservedCostFallbackReason].filter(Boolean)[0];
   if(fallback) setText('selectedCandidateMeta',$('selectedCandidateMeta').textContent+' · cost fallback: '+short(fallback));
 }
