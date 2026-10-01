@@ -254,6 +254,7 @@ function exactFunnelCounts(db: DatabaseSync, fromMs:number, toMs:number, runId:s
       AND COALESCE(CAST(json_extract(payload,'$.discoveredAtMs') AS REAL), timestamp_ms) BETWEEN ? AND ?
       AND json_type(payload,'$.netProfitUsd') IN ('integer','real')
       AND json_extract(payload,'$.verifiedClosedCycle') = 1
+      AND json_extract(payload,'$.quote.green') = 1
       AND CAST(json_extract(payload,'$.netProfitUsd') AS REAL) > 0${runQuote}`).get(...quoteArgs) as {count?:number}|undefined)?.count ?? 0;
 
   const unavailable=(db.prepare(`SELECT COUNT(DISTINCT observation_key) AS count
@@ -574,7 +575,11 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
   const allMutable=[...groups.values()];
   const opportunities = allMutable
     .map(({ _hasNumeric, _firstProbeId, _bestTimestampMs, ...item }) => {
-      if (_hasNumeric) item.status = item.verifiedClosedCycle && (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
+      if (_hasNumeric) {
+        const needsAtomic = typeof item.engine === 'string' && item.engine.startsWith('v0.9');
+        const verified = needsAtomic ? item.bestObservedAtomicVerified : item.verifiedClosedCycle;
+        item.status = verified && (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
+      }
       return item;
     })
     .sort((a,b)=>b.timestampMs-a.timestampMs);
