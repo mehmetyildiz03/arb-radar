@@ -34,7 +34,7 @@ interface IPoolManager {
 }
 
 contract AtomicCycleExecutor {
-    address internal constant POOL_MANAGER = 0x8366a39cc670b4001a1121b8f6a443a643e40951;
+    address internal constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
     uint160 internal constant MIN_SQRT_PRICE_PLUS_ONE = 4295128740;
     uint160 internal constant MAX_SQRT_PRICE_MINUS_ONE =
         1461446703485210103287273052203988822378723970341;
