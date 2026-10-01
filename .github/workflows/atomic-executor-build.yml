@@ -1,0 +1,35 @@
+name: Atomic Executor Build
+
+on:
+  push:
+    branches: [v0.9-atomic-override]
+    paths:
+      - 'contracts/AtomicCycleExecutor.sol'
+      - '.github/workflows/atomic-executor-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned solc
+        run: |
+          set -euo pipefail
+          curl -L --fail --silent --show-error             https://github.com/ethereum/solidity/releases/download/v0.8.30/solc-static-linux             -o /tmp/solc
+          chmod +x /tmp/solc
+          /tmp/solc --version
+      - name: Compile runtime
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/atomic-build
+          mkdir -p /tmp/atomic-build
+          /tmp/solc             --optimize --optimize-runs 200             --evm-version cancun             --abi --bin-runtime             -o /tmp/atomic-build             contracts/AtomicCycleExecutor.sol
+          echo "ATOMIC_EXECUTOR_RUNTIME_HEX=$(cat /tmp/atomic-build/AtomicCycleExecutor.bin-runtime)"
+          echo "ATOMIC_EXECUTOR_RUNTIME_SHA256=$(sha256sum /tmp/atomic-build/AtomicCycleExecutor.bin-runtime | awk '{print $1}')"
+          echo "ATOMIC_EXECUTOR_RUNTIME_BYTES=$(( $(wc -c < /tmp/atomic-build/AtomicCycleExecutor.bin-runtime) / 2 ))"
+          echo "ATOMIC_EXECUTOR_ABI=$(cat /tmp/atomic-build/AtomicCycleExecutor.abi)"
