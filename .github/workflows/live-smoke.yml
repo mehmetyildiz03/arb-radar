@@ -26,10 +26,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Run one v0.8 public read-only scan
+      - name: Run one public read-only economic-truth scan
         shell: bash
         env:
-          RADAR_DB: /tmp/arb-radar-v08-smoke.sqlite
+          RADAR_DB: /tmp/arb-radar-live-smoke.sqlite
           TRUTH_LAUNCH_LIMIT: 3
           TRUTH_SCAN_CONCURRENCY: 1
           PROBE_CONCURRENCY: 1
@@ -38,11 +38,12 @@ jobs:
           CANDIDATE_MAX_QUEUE_MS: 10000
         run: |
           set -euo pipefail
-          timeout 180s node dist/index.js | tee /tmp/arb-radar-v08-smoke.log
-          grep -q '"engine":"v0.8-economic-truth"' /tmp/arb-radar-v08-smoke.log
-          grep -q '"screenBlock"' /tmp/arb-radar-v08-smoke.log
-          grep -q '"truthScanFailures":0' /tmp/arb-radar-v08-smoke.log
-          if grep -q '"truthScanUnavailable"' /tmp/arb-radar-v08-smoke.log; then
+          timeout 180s node dist/index.js | tee /tmp/arb-radar-live-smoke.log
+          grep -q '"paperOnly":true' /tmp/arb-radar-live-smoke.log
+          grep -q '"engine":"v' /tmp/arb-radar-live-smoke.log
+          grep -q '"screenBlock"' /tmp/arb-radar-live-smoke.log
+          grep -q '"truthScanFailures":0' /tmp/arb-radar-live-smoke.log
+          if grep -q '"truthScanUnavailable"' /tmp/arb-radar-live-smoke.log; then
             echo "truth scan failure detected"
             exit 1
           fi
