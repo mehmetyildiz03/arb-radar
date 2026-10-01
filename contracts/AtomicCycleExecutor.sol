@@ -3,6 +3,36 @@ pragma solidity 0.8.30;
 
 /// @notice Minimal hookless Uniswap v4 closed-cycle executor used only for
 /// state-override paper simulation. This repository does not deploy it.
+struct PoolKey {
+    address currency0;
+    address currency1;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
+}
+
+struct SwapParams {
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+}
+
+struct PathHop {
+    address intermediateCurrency;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
+    bytes hookData;
+}
+
+interface IPoolManager {
+    function unlock(bytes calldata data) external returns (bytes memory result);
+    function swap(PoolKey memory key, SwapParams memory params, bytes calldata hookData)
+        external
+        returns (int256 swapDelta);
+    function take(address currency, address to, uint256 amount) external;
+}
+
 contract AtomicCycleExecutor {
     address internal constant POOL_MANAGER = 0x8366a39cc670b4001a1121b8f6a443a643e40951;
     uint160 internal constant MIN_SQRT_PRICE_PLUS_ONE = 4295128740;
@@ -20,36 +50,6 @@ contract AtomicCycleExecutor {
     error CycleNotClosed(address expectedBase, address finalCurrency);
     error NoProfit(uint256 amountIn, uint256 amountOut);
     error ProfitBelowMinimum(uint256 profit, uint256 minProfit);
-
-    struct PoolKey {
-        address currency0;
-        address currency1;
-        uint24 fee;
-        int24 tickSpacing;
-        address hooks;
-    }
-
-    struct SwapParams {
-        bool zeroForOne;
-        int256 amountSpecified;
-        uint160 sqrtPriceLimitX96;
-    }
-
-    struct PathHop {
-        address intermediateCurrency;
-        uint24 fee;
-        int24 tickSpacing;
-        address hooks;
-        bytes hookData;
-    }
-
-    interface IPoolManager {
-        function unlock(bytes calldata data) external returns (bytes memory result);
-        function swap(PoolKey memory key, SwapParams memory params, bytes calldata hookData)
-            external
-            returns (int256 swapDelta);
-        function take(address currency, address to, uint256 amount) external;
-    }
 
     /// @notice Executes a flash-accounted exact-input closed cycle.
     /// @dev The selector intentionally matches the representative calldata used
