@@ -1,4 +1,4 @@
-# Arb Radar v0.8.3 — Economic Truth Engine
+# Arb Radar v0.9 — Atomic Override Economic Truth
 
 Paper-only research radar for Par multi-market dislocations on Robinhood Chain. The application has no wallet, private key, signer, transaction submission, or automated trading path.
 
@@ -21,9 +21,9 @@ For each recent multi-market launch, the engine:
 9. sizes with exact quotes, using an analytical constant-product optimum only as a seed when strict assumptions hold,
 10. records lifecycle, run identity, RPC latency and paper P&L in SQLite.
 
-A dashboard row is **Verified Positive** only when a quote is marked `verifiedClosedCycle=true` and the same-base exact quote remains positive after the explicit research costs. Legacy/indexer-only positives cannot become green.
+A v0.9 dashboard row is **Verified Positive** only when the same-base V4Quoter quote is gross-positive, the identical cycle is re-executed successfully by the injected minimal atomic executor through `eth_call` state override, and paper net remains positive after calibrated execution gas, Nitro parent/data fee and safety margin. Legacy/indexer/quoter-only positives cannot become green.
 
-This is still paper evidence. It does not prove transaction inclusion, atomic-executor gas, realized profit, or future opportunity persistence.
+This is still paper evidence. v0.9 can measure atomic-executor gas through state-override `eth_estimateGas` when the RPC supports it, but it still does not deploy or submit the executor, prove transaction inclusion, realized profit, or future opportunity persistence.
 
 ## Run
 
@@ -88,21 +88,33 @@ If the smallest exact quote has gross output <= input, sizing stops immediately 
 
 The constant-product model remains available only as an **analytical seed** under strict Par liquidity/curve assumptions. Seed validation points are considered only inside the already-observed executable depth region. Analytical math never creates a green result by itself.
 
-## Paper cost model
+## Atomic executor and paper cost model
 
-For an exact closed-cycle quote, v0.8.3 uses:
+For every gross-positive exact closed-cycle quote, v0.9 injects the pinned runtime bytecode of `contracts/AtomicCycleExecutor.sol` at a dummy address with an RPC state override. Nothing is deployed.
 
-`paper net = base output value - base input value - calibrated research gas - parent-data fee - 1% safety margin`
+The minimal executor:
+- calls the canonical V4 PoolManager `unlock`,
+- chains exact-input hookless V4 swaps using PoolManager flash accounting,
+- requires every hop to consume the full requested input,
+- requires the final currency to equal the starting base,
+- reverts unless `amountOut > amountIn` and minimum profit is met,
+- takes only the final base-asset profit so PoolManager deltas settle to zero.
 
-The engine queries Nitro's NodeInterface `gasEstimateComponents` with representative executor calldata. When available:
+The same override is first used with `eth_call` to verify amount/profit. When supported, `eth_estimateGas` with the identical override supplies the executor transaction-gas estimate.
 
-- transaction child-gas overhead is added to the V4Quoter swap-gas proxy,
-- the existing 20% research gas buffer is applied,
-- the parent/data fee is measured from Nitro instead of using a fixed dollar allowance.
+The preferred v0.9 paper model is:
 
-If NodeInterface is unavailable or invalid, the quote fails closed to the previous conservative model: V4Quoter gas + 20% and the legacy $0.05 allowance. The dashboard identifies each quote as **NITRO CALIBRATED** or **LEGACY FALLBACK** and exposes the fallback reason.
+`paper net = same-base output - input - buffered atomic executor gas - Nitro parent/data fee - 1% safety margin`
 
-The 1% safety margin remains unchanged. V4Quoter gas is still **not** a deployed atomic-executor gas measurement; state-override executor simulation is the next accuracy target.
+Cost modes are explicit:
+- `ATOMIC + NITRO`: state-override executor gas + measured Nitro parent/data fee,
+- `ATOMIC + PARENT FALLBACK`: executor gas measured, parent/data measurement unavailable, conservative fallback retained,
+- `QUOTER + NITRO`: state-override gas unavailable; previous quoter/Nitro proxy retained,
+- `LEGACY FALLBACK`: conservative quoter gas + legacy allowance.
+
+Atomic gas is never silently synthesized. The dashboard shows the execution-gas source and Quoter-versus-executor gas evidence.
+
+The 1% safety margin remains unchanged.
 
 Coinbase ETH/USD is used only to report common USD values. A non-ETH base is valued at the same canonical block through Par's onchain QuotePricer and then combined with ETH/USD. The actual arbitrage quote itself remains same-base raw units.
 
@@ -121,7 +133,7 @@ The current-run funnel is counted directly in SQLite by distinct candidate key; 
 
 The v0.8 funnel is:
 
-**Same-block truth -> Closed-cycle quoted -> Verified paper positive**
+**Same-block truth -> Closed-cycle quoted -> Atomic verified -> Verified paper positive**
 
 The table also exposes:
 - base asset,
@@ -133,7 +145,7 @@ The table also exposes:
 - block,
 - engine/truth metadata internally.
 
-"Verified" means verified by the v0.8 closed-cycle research path, not verified future execution or realized return.
+"Verified Positive" in v0.9 means the closed cycle also has successful state-override atomic-executor evidence. It still does not mean a transaction was submitted, included or realized.
 
 ## Configuration
 
@@ -163,11 +175,12 @@ The main RPC transport allowlists read methods only. No secret configuration, ac
 
 The important remaining limits are:
 
-- only hookless all-V4 closed cycles are eligible for verified quoting;
-- V4Quoter gas is a research proxy rather than atomic executor gas;
-- quote completion is not transaction inclusion;
+- only hookless all-V4 closed cycles are eligible for atomic verification;
+- atomic executor bytecode is injected only for simulation and is not deployed;
+- state-override gas estimation may be RPC-dependent; conservative fallback remains explicit;
+- simulation completion is not transaction inclusion;
 - public RPC latency/rate limiting can dominate short-lived opportunities;
 - a positive sample does not establish strategy-level expectancy;
 - LONG5 historical data still lacks historical executable same-block state needed to reconstruct past closed-cycle P&L honestly.
 
-See [architecture](docs/ARCHITECTURE.md), [v0.8.3 cost audit](docs/V0.8.3_AUDIT.md), [v0.8.2 depth audit](docs/V0.8.2_AUDIT.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).
+See [architecture](docs/ARCHITECTURE.md), [v0.9 atomic audit](docs/V0.9_AUDIT.md), [v0.8.3 cost audit](docs/V0.8.3_AUDIT.md), [v0.8.2 depth audit](docs/V0.8.2_AUDIT.md), [v0.8 audit](docs/V0.8_AUDIT.md), and [LONG5 replay](docs/LONG5_REPLAY.md).
