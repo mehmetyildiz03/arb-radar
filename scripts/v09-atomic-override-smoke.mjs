@@ -6,10 +6,10 @@ import {
   toFunctionSelector,
   toHex,
 } from 'viem';
-import { createPar, robinhoodChain } from 'par-sdk';
+import { createPar, getReference, robinhoodChain } from 'par-sdk';
 import { Discovery } from '../dist/adapters/discovery.js';
 import { prepareLaunchEconomicCandidates, quotePreparedEconomicCandidate } from '../dist/economic/engine.js';
-import { quoteClosedCycle } from '../dist/economic/v4Truth.js';
+import { enumerateClosedCycles, quoteClosedCycle } from '../dist/economic/v4Truth.js';
 import {
   ATOMIC_EXECUTOR_ADDRESS,
   ATOMIC_EXECUTOR_CALLER,
@@ -29,6 +29,7 @@ const client=createPublicClient({
   transport:http(rpc,{retryCount:2,retryDelay:350,timeout:20_000}),
 });
 const discovery=new Discovery(createPar({client}),api);
+const ref=getReference(robinhoodChain.id);
 const noProfitSelector=toFunctionSelector('NoProfit(uint256,uint256)').toLowerCase();
 
 function collectStrings(value,seen=new Set()){
@@ -50,6 +51,12 @@ function rawInput(candidate,inputUsd){
   const human=inputUsd/candidate.baseUsdPrice;
   const precision=Math.min(candidate.baseDecimals,18);
   return parseUnits(human.toFixed(precision),candidate.baseDecimals);
+}
+
+function fallbackBaseDecimals(launch,cycle){
+  if(cycle.base.toLowerCase()==='0x0000000000000000000000000000000000000000')return 18;
+  if(cycle.base.toLowerCase()===ref.wrapped.toLowerCase())return 18;
+  return launch.markets.find(m=>m.pairToken.toLowerCase()===cycle.base.toLowerCase())?.quoteDecimals ?? 18;
 }
 
 async function ethUsd(){
@@ -86,11 +93,13 @@ const blockNumber=await client.getBlockNumber({cacheTime:0});
 const launches=await discovery.latest(limit);
 const candidates=[];
 const scanFailures=[];
+const launchRecords=[];
 
 for(const snapshot of launches){
   try{
     const launch=await discovery.metadata(snapshot.token);
     if(!launch||launch.kind!=='multi')continue;
+    launchRecords.push({snapshot,launch});
     const prepared=await prepareLaunchEconomicCandidates(client,launch,snapshot,valuation,{
       paperCapitalUsd:100,maxTradeUsd:100,minTradeUsd:.001,blockNumber,
     });
@@ -189,6 +198,47 @@ for(const candidate of selected){
   }
 }
 
+
+if(!firstNegative){
+  fallbackSearch:
+  for(const {launch} of launchRecords){
+    for(const buy of launch.markets){
+      for(const sell of launch.markets){
+        if(buy.index===sell.index)continue;
+        const cycles=enumerateClosedCycles(launch,buy.index,sell.index)
+          .filter(cycle=>cycle.allV4&&cycle.hooklessV4);
+        for(const cycle of cycles){
+          try{
+            const decimals=fallbackBaseDecimals(launch,cycle);
+            const amountIn=10n**BigInt(Math.max(0,decimals-4));
+            if(amountIn<=0n)continue;
+            const quoted=await quoteClosedCycle(client,cycle,amountIn,blockNumber);
+            if(quoted.amountOut<=amountIn){
+              firstNegative={
+                candidate:{launch,cycle},
+                inputUsd:null,
+                amountIn,
+                quoted,
+                integrationFallback:true,
+              };
+              break fallbackSearch;
+            }
+          }catch(error){
+            attempts.push({
+              token:launch.token,
+              buyMarket:buy.index,
+              sellMarket:sell.index,
+              base:cycle.base,
+              integrationFallback:true,
+              error:String(error),
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
 if(firstNegative){
   const {candidate,inputUsd,amountIn,quoted}=firstNegative;
   const calldata=encodeAtomicExecutorCall(candidate.cycle,amountIn,1n);
@@ -222,6 +272,7 @@ if(firstNegative){
     hopCount:candidate.cycle.hopCount,
     blockNumber:blockNumber.toString(),
     inputUsd,
+    integrationFallback:firstNegative.integrationFallback===true,
     amountIn:amountIn.toString(),
     quoterAmountOut:quoted.amountOut.toString(),
     expectedExecutorError:'NoProfit(uint256,uint256)',
@@ -234,7 +285,7 @@ if(firstNegative){
     quoteAttempts:attempts.length,
     scanFailures,
     profitableClaim:false,
-    note:'All selected marginal candidates/sizes were searched before falling back to the negative-path integration proof. No transaction was sent.',
+    note:'Gross-positive search used only production marginal candidates. When none yielded a negative sample, a structurally supported cycle was used only for the NoProfit integration proof. No transaction was sent.',
   }));
   process.exit(0);
 }
