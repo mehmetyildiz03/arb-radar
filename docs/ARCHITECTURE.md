@@ -1,4 +1,4 @@
-# Arb Radar architecture — v0.8.3 Economic Truth Engine
+# Arb Radar architecture — v0.9 Atomic Override Economic Truth
 
 ## Objective
 
@@ -71,23 +71,40 @@ If an exact quote succeeds but gross output is already <= input, sizing stops be
 
 This makes successful shallow quotes durable research evidence even when the next larger notional is impossible.
 
-### 8. Cost model
+### 8. State-override atomic executor
 
-`economic/nitroFees.ts` calibrates transaction-level fee components through the Nitro NodeInterface precompile.
+`contracts/AtomicCycleExecutor.sol` is a minimal, hookless all-V4 closed-cycle executor compiled reproducibly with pinned solc 0.8.30, Cancun EVM and optimizer runs=200. Its runtime bytecode and SHA-256 are pinned in `AtomicCycleExecutor.artifact.json`; CI fails on artifact drift.
 
-For each exact quote, representative executor calldata is passed to `gasEstimateComponents`. When valid, the paper model combines:
-- V4Quoter gas estimate as a swap-execution proxy,
-- Nitro child-gas transaction overhead,
-- 20% research gas buffer,
-- current/base fee,
-- measured Nitro parent/data fee,
+The contract is never deployed by Arb Radar. `economic/atomicExecutor.ts` injects its runtime bytecode at a fixed dummy address using the third state-override argument to `eth_call`.
+
+Inside PoolManager `unlock`, the executor:
+- reconstructs each sorted PoolKey,
+- performs exact-input swaps using canonical TickMath price limits,
+- rejects hooks and non-empty hook data,
+- rejects partial fills and invalid delta signs,
+- exact-chains each output into the next hop,
+- requires the final currency to be the initial base,
+- requires positive/minimum profit,
+- takes only the final profit credit.
+
+Successful atomic output must equal the canonical V4Quoter output or the quote fails closed.
+
+When the endpoint accepts the same override on `eth_estimateGas`, that result is the preferred execution-gas source.
+
+### 9. Cost model
+
+`economic/nitroFees.ts` combines the best available execution-gas evidence with Nitro parent/data fee measurement.
+
+Preferred path:
+- state-override atomic executor gas,
+- 20% research buffer,
+- current/base gas price,
+- Nitro parent/data fee priced using the **actual executor target and calldata**,
 - 1% output safety margin.
 
-If NodeInterface fails, the quote is explicitly marked `legacy-fallback` and retains the old $0.05 conservative allowance. No calibration failure silently creates a cheaper result.
+When atomic override gas is unavailable, the previous V4Quoter + Nitro-child proxy remains an explicit fallback. If Nitro parent/data measurement also fails, the conservative legacy allowance remains explicit. No fallback silently produces a cheaper classification.
 
-The resulting field remains paper research P&L. V4Quoter gas plus representative Nitro overhead is still not exact deployed atomic-executor gas.
-
-### 9. Lifecycle and scheduler
+### 10. Lifecycle and scheduler
 
 `research/scheduler.ts`, `measurement.ts` and `lifecycle.ts` retain:
 - bounded probe/sizing concurrency,
@@ -98,7 +115,7 @@ The resulting field remains paper research P&L. V4Quoter gas plus representative
 
 Quote completion is measurement completion, not inclusion.
 
-### 10. Run identity and persistence
+### 11. Run identity and persistence
 
 `research/run.ts` creates process-level `runId`, `engineVersion` and `runStartedAtMs`.
 
@@ -113,15 +130,15 @@ SQLite schema version 4 includes:
 - radar_runtime
 - radar_runs
 
-v0.8.3 uses the run identity `0.8.3-economic-truth-nitro-calibrated`; observations carry that identity in payloads. Existing databases remain append-only/create-if-missing.
+v0.9 uses the run identity `0.9.0-economic-truth-atomic-override`; observations carry that identity in payloads. Existing databases remain append-only/create-if-missing.
 
-### 11. Dashboard
+### 12. Dashboard
 
 The dashboard defaults to Current run. It can select a recent run or all runs.
 
 For run-scoped views, funnel counts are calculated directly in SQLite using distinct candidate keys rather than inferred from the bounded 5,000-row analysis sample.
 
-Green status requires `verifiedClosedCycle=true`. A legacy positive numeric row is not promoted to Verified Positive.
+For v0.9 rows, green status additionally requires atomic state-override evidence and `quote.green=true`. A quoter-only or legacy positive numeric row is not promoted to Verified Positive.
 
 ## Canonical contracts used by the v0.8 truth path
 
@@ -135,9 +152,8 @@ The addresses are explicit in the source and covered by the live-smoke research 
 
 No private key, mnemonic, account signer, `sendTransaction`, write contract, or automatic execution path is part of the application.
 
-v0.8 does not claim:
-- atomic executor gas,
-- transaction inclusion probability,
+v0.9 does not claim:
+- deployed executor behavior or transaction inclusion probability,
 - frontrunning capability,
 - public-mempool access through the sequencer feed,
 - historical LONG5 executable P&L,
