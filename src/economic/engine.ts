@@ -31,7 +31,8 @@ import {
   type V4PoolState,
 } from './v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from './seed.js';
-import { calibrateResearchCost, type NitroFeeComponents } from './nitroFees.js';
+import { calibrateResearchCost, type NitroFeeComponents, type ResearchCostMode, type ExecutionGasSource } from './nitroFees.js';
+import { simulateAtomicExecutor, type AtomicExecutorSimulation } from './atomicExecutor.js';
 
 export interface EconomicScreen extends RouteScreen {
   source: 'same-block-v4-state';
@@ -59,9 +60,9 @@ export interface PreparedEconomicCandidate {
 }
 
 export interface EconomicExecutionQuote extends ExecutionQuote {
-  kind: 'v4-closed-cycle-quoter';
-  engine: 'v0.8-economic-truth';
-  truthLevel: 'same-block-v4-closed-cycle-quoter';
+  kind: 'v4-closed-cycle-atomic-paper';
+  engine: 'v0.9-economic-truth-atomic-override';
+  truthLevel: 'same-block-v4-closed-cycle-quoter' | 'state-override-atomic-executor';
   verifiedClosedCycle: true;
   blockNumber: bigint;
   base: Address;
@@ -73,7 +74,9 @@ export interface EconomicExecutionQuote extends ExecutionQuote {
   quoterGasEstimate: bigint;
   gasUnitsResearch: bigint;
   gasPriceWei: bigint;
-  costModel: 'nitro-calibrated' | 'legacy-fallback';
+  costModel: ResearchCostMode;
+  executionGasSource: ExecutionGasSource;
+  atomicExecutor: AtomicExecutorSimulation | null;
   nitroFee: NitroFeeComponents | null;
   costFallbackReason: string | null;
   infinitesimalEdgeBps: number;
@@ -319,6 +322,14 @@ export async function quotePreparedEconomicCandidate(
     : await baseUsdAtBlock(client,prepared.cycle.base,prepared.baseDecimals,prepared.ethUsdPrice,quoteBlock);
   const amountInRaw=inputRawForUsd(inputUsd,baseUsdPrice,prepared.baseDecimals);
   const closed=await quoteClosedCycle(client,prepared.cycle,amountInRaw,quoteBlock);
+  const grossPositive=closed.amountOut>amountInRaw;
+  const atomicExecutor=grossPositive
+    ? await simulateAtomicExecutor(client,prepared.cycle,amountInRaw,quoteBlock,1n)
+    : null;
+  if(atomicExecutor && atomicExecutor.amountOut!==closed.amountOut){
+    throw new Error('Atomic executor amountOut differs from canonical V4Quoter');
+  }
+
   const gasBufferBps=options.gasBufferBps ?? 2000;
   const calibrated=await calibrateResearchCost({
     client,
@@ -329,6 +340,9 @@ export async function quotePreparedEconomicCandidate(
     gasBufferBps,
     fallbackExtraCostsUsd:options.extraCostsUsd,
     blockNumber:quoteBlock,
+    executorGasEstimate:atomicExecutor?.gasEstimate,
+    executorTarget:atomicExecutor?.executorAddress,
+    executorCalldata:atomicExecutor?.calldata,
   });
   const outputHuman=Number(formatUnits(closed.amountOut,prepared.baseDecimals));
   const outputUsd=outputHuman*baseUsdPrice;
@@ -342,9 +356,9 @@ export async function quotePreparedEconomicCandidate(
   const costBreakdown=quoteCostBreakdown(quote);
   return {
     ...quote,
-    kind:'v4-closed-cycle-quoter',
-    engine:'v0.8-economic-truth',
-    truthLevel:'same-block-v4-closed-cycle-quoter',
+    kind:'v4-closed-cycle-atomic-paper',
+    engine:'v0.9-economic-truth-atomic-override',
+    truthLevel:atomicExecutor?'state-override-atomic-executor':'same-block-v4-closed-cycle-quoter',
     verifiedClosedCycle:true,
     blockNumber:closed.blockNumber,
     base:prepared.cycle.base,
@@ -357,20 +371,27 @@ export async function quotePreparedEconomicCandidate(
     gasUnitsResearch:calibrated.gasUnitsResearch,
     gasPriceWei:calibrated.gasPriceWei,
     costModel:calibrated.mode,
+    executionGasSource:calibrated.executionGasSource,
+    atomicExecutor,
     nitroFee:calibrated.nitro,
     costFallbackReason:calibrated.fallbackReason,
     infinitesimalEdgeBps:prepared.truth.infinitesimalEdgeBps,
     costBreakdown,
-    green:costBreakdown.netProfitUsd>0,
+    green:atomicExecutor!==null && costBreakdown.netProfitUsd>0,
     assumptions:[
       'Closed cycle starts and ends in the same base asset',
-      'All cycle hops quoted statefully by canonical Robinhood V4Quoter at one block',
-      'V4Quoter gas estimate remains a swap-execution proxy, not deployed executor gas',
-      calibrated.mode==='nitro-calibrated'
-        ? `Nitro NodeInterface adds transaction child-gas overhead and measured parent-data fee; gas buffer ${gasBufferBps/100}%`
-        : `Nitro calibration unavailable; conservative legacy extra-cost fallback retained; gas buffer ${gasBufferBps/100}%`,
-      '1% output safety margin remains unchanged in v0.8.3',
-      'Paper result only; no transaction inclusion or realized profit',
+      'All cycle hops are amount-quoted statefully by canonical Robinhood V4Quoter at one block',
+      atomicExecutor
+        ? 'Gross-positive cycle amount/profit re-executed by injected minimal atomic executor bytecode with eth_call state override'
+        : 'Gross-nonpositive cycle skips atomic executor simulation because profit-or-revert would intentionally revert',
+      calibrated.executionGasSource==='state-override-estimateGas'
+        ? `Executor transaction gas comes from eth_estimateGas with the identical state override; gas buffer ${gasBufferBps/100}%`
+        : `State-override gas estimate unavailable/not applicable; conservative V4Quoter-based gas fallback retained; gas buffer ${gasBufferBps/100}%`,
+      calibrated.nitro
+        ? 'Nitro NodeInterface measures parent/data fee for transaction calldata'
+        : 'Nitro parent/data measurement unavailable; conservative explicit fallback retained',
+      '1% output safety margin remains unchanged in v0.9',
+      'Paper result only; no deployment, transaction submission, inclusion or realized profit',
     ],
   };
 }
