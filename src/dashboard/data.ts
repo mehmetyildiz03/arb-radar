@@ -31,6 +31,10 @@ interface OpportunitySummary extends Record<string, unknown> {
   firstProbeNetProfitUsd: number | null;
   firstProbeCostBreakdown: QuoteCostBreakdown | null;
   firstProbeCostModel: string | null;
+  firstProbeExecutionGasSource: string | null;
+  firstProbeAtomicVerified: boolean;
+  firstProbeQuoterGasEstimate: string | null;
+  firstProbeExecutorGasEstimate: string | null;
   firstProbeCostFallbackReason: string | null;
   firstProbeProfile: Record<string, number> | null;
   latestInputUsd: number | null;
@@ -41,6 +45,10 @@ interface OpportunitySummary extends Record<string, unknown> {
   bestObservedNetProfitUsd: number | null;
   bestObservedCostBreakdown: QuoteCostBreakdown | null;
   bestObservedCostModel: string | null;
+  bestObservedExecutionGasSource: string | null;
+  bestObservedAtomicVerified: boolean;
+  bestObservedQuoterGasEstimate: string | null;
+  bestObservedExecutorGasEstimate: string | null;
   bestObservedCostFallbackReason: string | null;
   bestObservedProfile: Record<string, number> | null;
   quoteCount: number;
@@ -362,6 +370,30 @@ function quoteBreakdownFromPayload(payload: Record<string,unknown>, quote: Recor
   }
 }
 
+function scalarText(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'bigint') return value.toString();
+  return null;
+}
+
+function quoteExecutionMeta(quote: Record<string,unknown> | undefined): {
+  gasSource: string | null;
+  atomicVerified: boolean;
+  quoterGasEstimate: string | null;
+  executorGasEstimate: string | null;
+} {
+  const atomic = quote?.atomicExecutor && typeof quote.atomicExecutor === 'object' && !Array.isArray(quote.atomicExecutor)
+    ? quote.atomicExecutor as Record<string,unknown>
+    : null;
+  return {
+    gasSource: typeof quote?.executionGasSource === 'string' ? quote.executionGasSource : null,
+    atomicVerified: atomic?.source === 'state-override-eth-call',
+    quoterGasEstimate: scalarText(quote?.quoterGasEstimate),
+    executorGasEstimate: scalarText(atomic?.gasEstimate),
+  };
+}
+
 function quoteProfile(quote: Record<string,unknown> | undefined): Record<string,number> | null {
   const raw=quote?.profile;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -424,10 +456,12 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
     const netProfitUsd = num(payload.netProfitUsd);
     const breakdown = quoteBreakdownFromPayload(payload,quote);
     const costModel = typeof quote?.costModel === 'string' ? quote.costModel : null;
+    const executionMeta = quoteExecutionMeta(quote);
     const costFallbackReason = typeof quote?.costFallbackReason === 'string' ? quote.costFallbackReason : null;
     const profile = quoteProfile(quote);
     const isUnavailable = payload.status === 'unavailable';
     const verifiedClosedCycle = payload.verifiedClosedCycle === true || quote?.verifiedClosedCycle === true;
+    const quoteGreen = quote?.green === true || (quote?.green === undefined && verifiedClosedCycle && netProfitUsd !== null && netProfitUsd > 0);
     const engine = typeof payload.engine === 'string' ? payload.engine : typeof quote?.engine === 'string' ? quote.engine : null;
     const truthLevel = typeof payload.truthLevel === 'string' ? payload.truthLevel : typeof quote?.truthLevel === 'string' ? quote.truthLevel : null;
     const baseSymbol = typeof payload.baseSymbol === 'string' ? payload.baseSymbol : typeof quote?.baseSymbol === 'string' ? quote.baseSymbol : null;
@@ -438,7 +472,7 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       groups.set(row.observation_key, {
         key: row.observation_key,
         timestampMs: discoveryMs(payload,row),
-        status: isUnavailable ? 'unavailable' : (verifiedClosedCycle && netProfitUsd !== null && netProfitUsd > 0 ? 'positive' : 'nonpositive'),
+        status: isUnavailable ? 'unavailable' : (quoteGreen ? 'positive' : 'nonpositive'),
         token: fields.token,
         verifiedClosedCycle,
         engine,
@@ -453,6 +487,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
         firstProbeNetProfitUsd: netProfitUsd,
         firstProbeCostBreakdown: breakdown,
         firstProbeCostModel: costModel,
+        firstProbeExecutionGasSource: executionMeta.gasSource,
+        firstProbeAtomicVerified: executionMeta.atomicVerified,
+        firstProbeQuoterGasEstimate: executionMeta.quoterGasEstimate,
+        firstProbeExecutorGasEstimate: executionMeta.executorGasEstimate,
         firstProbeCostFallbackReason: costFallbackReason,
         firstProbeProfile: profile,
         latestInputUsd: quote ? num(quote.inputUsd) : null,
@@ -463,6 +501,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
         bestObservedNetProfitUsd: netProfitUsd,
         bestObservedCostBreakdown: breakdown,
         bestObservedCostModel: costModel,
+        bestObservedExecutionGasSource: executionMeta.gasSource,
+        bestObservedAtomicVerified: executionMeta.atomicVerified,
+        bestObservedQuoterGasEstimate: executionMeta.quoterGasEstimate,
+        bestObservedExecutorGasEstimate: executionMeta.executorGasEstimate,
         bestObservedCostFallbackReason: costFallbackReason,
         bestObservedProfile: profile,
         quoteCount: netProfitUsd === null ? 0 : 1,
@@ -497,6 +539,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
           current.firstProbeNetProfitUsd = netProfitUsd;
           current.firstProbeCostBreakdown = breakdown;
           current.firstProbeCostModel = costModel;
+          current.firstProbeExecutionGasSource = executionMeta.gasSource;
+          current.firstProbeAtomicVerified = executionMeta.atomicVerified;
+          current.firstProbeQuoterGasEstimate = executionMeta.quoterGasEstimate;
+          current.firstProbeExecutorGasEstimate = executionMeta.executorGasEstimate;
           current.firstProbeCostFallbackReason = costFallbackReason;
           current.firstProbeProfile = profile;
           current._firstProbeId = row.id;
@@ -506,6 +552,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
           current.bestObservedInputUsd = quote ? num(quote.inputUsd) : null;
           current.bestObservedCostBreakdown = breakdown;
           current.bestObservedCostModel = costModel;
+          current.bestObservedExecutionGasSource = executionMeta.gasSource;
+          current.bestObservedAtomicVerified = executionMeta.atomicVerified;
+          current.bestObservedQuoterGasEstimate = executionMeta.quoterGasEstimate;
+          current.bestObservedExecutorGasEstimate = executionMeta.executorGasEstimate;
           current.bestObservedCostFallbackReason = costFallbackReason;
           current.bestObservedProfile = profile;
           current._bestTimestampMs = row.timestamp_ms;
@@ -515,7 +565,7 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
 
     if (netProfitUsd !== null) {
       paperPnl.push({ timestampMs: row.timestamp_ms, netProfitUsd, key: row.observation_key });
-      if (verifiedClosedCycle && netProfitUsd > 0 && (!latestPositiveRow || row.timestamp_ms > latestPositiveRow.row.timestamp_ms)) {
+      if (quoteGreen && netProfitUsd > 0 && (!latestPositiveRow || row.timestamp_ms > latestPositiveRow.row.timestamp_ms)) {
         latestPositiveRow = { row, payload };
       }
     }
@@ -566,6 +616,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       firstProbeNetProfitUsd: netProfitUsd,
       firstProbeCostBreakdown: breakdown,
       firstProbeCostModel: typeof quote?.costModel==='string'?quote.costModel:null,
+      firstProbeExecutionGasSource: quoteExecutionMeta(quote).gasSource,
+      firstProbeAtomicVerified: quoteExecutionMeta(quote).atomicVerified,
+      firstProbeQuoterGasEstimate: quoteExecutionMeta(quote).quoterGasEstimate,
+      firstProbeExecutorGasEstimate: quoteExecutionMeta(quote).executorGasEstimate,
       firstProbeCostFallbackReason: typeof quote?.costFallbackReason==='string'?quote.costFallbackReason:null,
       firstProbeProfile: profile,
       latestInputUsd: quote ? num(quote.inputUsd) : null,
@@ -576,6 +630,10 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
       bestObservedNetProfitUsd: netProfitUsd,
       bestObservedCostBreakdown: breakdown,
       bestObservedCostModel: typeof quote?.costModel==='string'?quote.costModel:null,
+      bestObservedExecutionGasSource: quoteExecutionMeta(quote).gasSource,
+      bestObservedAtomicVerified: quoteExecutionMeta(quote).atomicVerified,
+      bestObservedQuoterGasEstimate: quoteExecutionMeta(quote).quoterGasEstimate,
+      bestObservedExecutorGasEstimate: quoteExecutionMeta(quote).executorGasEstimate,
       bestObservedCostFallbackReason: typeof quote?.costFallbackReason==='string'?quote.costFallbackReason:null,
       bestObservedProfile: profile,
       quoteCount: 1,
