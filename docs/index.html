@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Arb Radar · v0.8.3 Economic Truth</title>
+  <title>Arb Radar · v0.9 Atomic Override</title>
   <style>
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#0b0d10;color:#eef2f7}
     body{margin:0}.wrap{max-width:980px;margin:auto;padding:56px 24px}
@@ -19,36 +19,38 @@
 </head>
 <body>
   <main class="wrap">
-    <span class="badge">v0.8.3 · NITRO-CALIBRATED ECONOMIC TRUTH · PAPER ONLY</span>
+    <span class="badge">v0.9 · STATE-OVERRIDE ATOMIC VERIFICATION · PAPER ONLY</span>
     <h1>Arb Radar</h1>
-    <p>Read-only research radar for Par multi-market dislocations on Robinhood Chain. v0.8.3 keeps depth-aware exact quoting and calibrates transaction poster/data costs through Nitro NodeInterface instead of relying on a fixed dollar allowance.</p>
+    <p>Read-only research radar for Par multi-market dislocations on Robinhood Chain. v0.9 keeps same-block/depth-aware Economic Truth and adds a real minimal atomic executor that is injected only for RPC simulation.</p>
 
     <section class="grid">
-      <article class="card"><strong class="ok">Same-block</strong><span>canonical V4 StateView truth</span></article>
-      <article class="card"><strong>Depth-aware</strong><span>$0.01 upward exact cycle sizing</span></article>
-      <article class="card"><strong>60 / 60</strong><span>tests green on Node 22 and 24</span></article>
-      <article class="card"><strong>Read-only</strong><span>no key, signer or transaction submission</span></article>
+      <article class="card"><strong class="ok">Atomic verified</strong><span>state-override eth_call for gross-positive cycles</span></article>
+      <article class="card"><strong>Executor gas</strong><span>state-override estimateGas when supported</span></article>
+      <article class="card"><strong>3634 B</strong><span>pinned executor runtime artifact</span></article>
+      <article class="card"><strong>Read-only</strong><span>no deployment, key, signer or transaction submission</span></article>
     </section>
 
-    <div class="note"><strong>Green still means exact verified paper net.</strong><br>
-      Marginal spot edge, analytical sizing math, or a shallow price outlier cannot create a green candidate. The cycle must start and finish in the same base asset, receive a canonical exact quote, and remain positive after the unchanged paper cost model.
+    <div class="note"><strong>Green is stricter in v0.9.</strong><br>
+      A V4Quoter quote is not enough. A v0.9 candidate can become Verified Positive only after the identical closed cycle succeeds through the injected atomic executor, its output matches the canonical V4Quoter output, and final paper net remains positive after execution gas, Nitro parent/data fee and safety margin.
     </div>
 
-    <h2>What v0.8.3 changed</h2>
-    <p>v0.8.2 established exact executable depth. v0.8.3 targets the remaining cost-model uncertainty: Nitro <code>gasEstimateComponents</code> now measures transaction child-gas overhead and parent/data fees. If that measurement is unavailable, the older conservative $0.05 allowance remains as an explicit fallback.</p>
+    <h2>What changed</h2>
+    <p>The minimal executor calls canonical V4 PoolManager <code>unlock</code>, exact-chains hookless swaps through flash accounting, rejects partial fills, requires the cycle to return to the same base asset, and reverts unless profit is positive. Arb Radar injects the pinned runtime at a dummy address through state override; the contract is not deployed.</p>
 
-    <p>A live Nitro smoke measured a parent-data component of about $0.00116 in one sample, while a later block returned zero parent-data gas. The system therefore measures per quote rather than assuming a fixed discount. The 1% safety margin is unchanged.</p>
+    <p>When public RPC supports the same override on <code>eth_estimateGas</code>, that gas becomes the preferred execution-gas evidence. Nitro NodeInterface continues to measure the parent/data component. If either measurement is unavailable, the fallback mode is persisted explicitly.</p>
 
-    <h2>Dashboard</h2>
-    <p>The local dashboard shows exact first-probe depth edge rather than giant marginal percentages as executable spread. Capture Quality also exposes unique depth-rejected candidates and total <code>NotEnoughLiquidity</code> events.</p>
+    <h2>Live evidence</h2>
+    <p>Public Robinhood RPC successfully executed the injected runtime on real chain state and returned the expected <code>NoProfit</code> revert for a gross-negative cycle. The same endpoint also accepted state override on <code>eth_estimateGas</code>; a generic injected-runtime probe returned 21,171 gas.</p>
+
+    <p>A bounded six-block capture window examined 26–27 recent launches per attempt. No production marginal-positive candidate appeared during that window, so no live gross-positive executor-gas comparison was fabricated. The code path remains ready to measure it when one naturally occurs.</p>
 
     <h2>Measurement boundary</h2>
-    <p>V4Quoter gas plus representative Nitro transaction overhead remains a research proxy rather than deployed atomic-executor gas. Quote completion is not transaction inclusion. A positive sample would be paper evidence, not realized profit.</p>
+    <p>Atomic override is still simulation, not transaction inclusion. No executor deployment or funded account exists in this project. A future green sample would be stronger paper evidence, not realized profit or guaranteed capture.</p>
 
     <h2>Local use</h2>
     <p>Run <code>npm ci</code> and <code>npm run dev</code>, then open <code>http://127.0.0.1:4173</code>. This GitHub Pages page is only a static project-status surface.</p>
 
-    <p><a href="V0.8.3_AUDIT.md">v0.8.3 cost audit</a> · <a href="V0.8.2_AUDIT.md">v0.8.2 depth audit</a> · <a href="ARCHITECTURE.md">architecture</a> · <a href="V0.8_AUDIT.md">v0.8 audit</a> · <a href="LONG5_REPLAY.md">LONG5 replay</a></p>
+    <p><a href="V0.9_AUDIT.md">v0.9 atomic audit</a> · <a href="V0.8.3_AUDIT.md">v0.8.3 cost audit</a> · <a href="V0.8.2_AUDIT.md">v0.8.2 depth audit</a> · <a href="ARCHITECTURE.md">architecture</a> · <a href="LONG5_REPLAY.md">LONG5 replay</a></p>
   </main>
 </body>
 </html>

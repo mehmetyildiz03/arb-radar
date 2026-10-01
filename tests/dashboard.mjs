@@ -204,7 +204,7 @@ test('dashboard current-run mode isolates metrics across runs and exact funnel i
       },{timestampMs:now-4000,blockNumber:null,source:'fixture'});
       store.record('executable_quotes',`old:${i}`,{
         ...oldRun,discoveredAtMs:now-4000,route:{token:'0xold'},screen:{grossSpreadPct:99},
-        quote:{inputUsd:1,outputUsd:2,gasUsd:0},netProfitUsd:1,
+        quote:{inputUsd:1,outputUsd:2,gasUsd:0,green:true},netProfitUsd:1,
         verifiedClosedCycle:true,engine:'fixture-verified'
       },{timestampMs:now-3000,blockNumber:1n,source:'fixture'});
     }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { zeroAddress, parseEther } from 'viem';
+import { zeroAddress, parseEther, encodeFunctionResult } from 'viem';
 import { poolKeyFor, poolIdOf } from 'par-sdk';
 import { screenRoute, enumerateDirectedRoutes } from '../dist/arbitrage/routes.js';
 import { optimizeRoute } from '../dist/arbitrage/optimizer.js';
@@ -26,6 +26,8 @@ import {
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
 import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js';
 import { encodeRepresentativeExecutorCall, readNitroFeeComponents, calibrateResearchCost } from '../dist/economic/nitroFees.js';
+import { atomicExecutorAbi, atomicExecutorArtifact, encodeAtomicExecutorCall, simulateAtomicExecutor, ATOMIC_EXECUTOR_ADDRESS } from '../dist/economic/atomicExecutor.js';
+import { quotePreparedEconomicCandidate } from '../dist/economic/engine.js';
 import { classifyV4QuoteError } from '../dist/economic/v4Truth.js';
 
 const token = '0x1111111111111111111111111111111111111111';
@@ -775,7 +777,8 @@ test('Nitro-calibrated research cost adds tx child overhead and measured parent 
     client,cycle,amountIn:1000n,quoterGasEstimate:120000n,ethUsdPrice:3000,
     gasBufferBps:2000,fallbackExtraCostsUsd:.05,blockNumber:50n,
   });
-  assert.equal(cost.mode,'nitro-calibrated');
+  assert.equal(cost.mode,'quoter-proxy-nitro-calibrated');
+  assert.equal(cost.executionGasSource,'v4quoter-plus-nitro-child');
   assert.equal(cost.gasUnitsResearch,234000n);
   assert.equal(cost.gasPriceWei,30000000n);
   assert.equal(Number(cost.gasUsd.toFixed(8)),.02106);
@@ -822,4 +825,138 @@ test('representative executor calldata grows with route complexity', () => {
   const a=encodeRepresentativeExecutorCall(one,1000n);
   const b=encodeRepresentativeExecutorCall(two,1000n);
   assert.ok(b.length>a.length);
+});
+
+
+test('atomic executor artifact is pinned and calldata preserves the closed cycle path', () => {
+  const artifact=atomicExecutorArtifact();
+  assert.equal(artifact.contractName,'AtomicCycleExecutor');
+  assert.equal(artifact.compiler,'0.8.30+commit.73712a01');
+  assert.equal(artifact.runtimeBytes,3634);
+  assert.equal(artifact.runtimeHexSha256,'7649cd367db58ce2ffe4ccc62979a1c76c6712eb3a9b1aeb204ad52548b70d5a');
+  assert.equal((artifact.runtimeBytecode.length-2)/2,artifact.runtimeBytes);
+
+  const mid='0x4444444444444444444444444444444444444444';
+  const cycle={
+    base:zeroAddress,allV4:true,hooklessV4:true,
+    hops:[
+      {output:mid,key:poolKeyFor(mid,zeroAddress,3000,60)},
+      {output:zeroAddress,key:poolKeyFor(mid,zeroAddress,500,10)},
+    ],
+  };
+  const data=encodeAtomicExecutorCall(cycle,1000n,1n);
+  assert.ok(data.startsWith('0x608074bb'));
+  assert.ok(data.length>10);
+});
+
+test('state-override atomic executor verifies amount/profit and captures override gas', async () => {
+  const mid='0x4444444444444444444444444444444444444444';
+  const cycle={
+    base:zeroAddress,allV4:true,hooklessV4:true,
+    hops:[
+      {output:mid,key:poolKeyFor(mid,zeroAddress,3000,60)},
+      {output:zeroAddress,key:poolKeyFor(mid,zeroAddress,500,10)},
+    ],
+  };
+  const calls=[];
+  const client={
+    request:async ({method,params})=>{
+      calls.push({method,params});
+      if(method==='eth_call')return encodeFunctionResult({
+        abi:atomicExecutorAbi,functionName:'executeCycle',result:[1100n,100n],
+      });
+      if(method==='eth_estimateGas')return '0x30d40';
+      throw Error('unexpected method');
+    },
+  };
+  const result=await simulateAtomicExecutor(client,cycle,1000n,50n,1n);
+  assert.equal(result.amountOut,1100n);
+  assert.equal(result.profit,100n);
+  assert.equal(result.gasEstimate,200000n);
+  assert.equal(result.gasEstimateSource,'state-override-estimateGas');
+  assert.equal(result.executorAddress,ATOMIC_EXECUTOR_ADDRESS);
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].params[1],'0x32');
+  assert.equal(calls[0].params[2][ATOMIC_EXECUTOR_ADDRESS].code,atomicExecutorArtifact().runtimeBytecode);
+  assert.equal(calls[1].params[2][ATOMIC_EXECUTOR_ADDRESS].code,atomicExecutorArtifact().runtimeBytecode);
+});
+
+test('state-override atomic executor keeps verified amount when override gas estimation is unsupported', async () => {
+  const mid='0x4444444444444444444444444444444444444444';
+  const cycle={
+    base:zeroAddress,allV4:true,hooklessV4:true,
+    hops:[
+      {output:mid,key:poolKeyFor(mid,zeroAddress,3000,60)},
+      {output:zeroAddress,key:poolKeyFor(mid,zeroAddress,500,10)},
+    ],
+  };
+  const client={
+    request:async ({method})=>{
+      if(method==='eth_call')return encodeFunctionResult({
+        abi:atomicExecutorAbi,functionName:'executeCycle',result:[1050n,50n],
+      });
+      throw Error('third state-override param unsupported');
+    },
+  };
+  const result=await simulateAtomicExecutor(client,cycle,1000n,50n,1n);
+  assert.equal(result.amountOut,1050n);
+  assert.equal(result.profit,50n);
+  assert.equal(result.gasEstimate,null);
+  assert.equal(result.gasEstimateSource,'unsupported');
+  assert.match(result.gasEstimateError,/unsupported/);
+});
+
+test('atomic executor gas calibration does not add Nitro child gas twice', async () => {
+  const cycle={
+    base:zeroAddress,
+    hops:[{output:pair,key:poolKeyFor(pair,zeroAddress,3000,60)}],
+  };
+  const client={
+    readContract:async args=>{
+      assert.equal(args.args[0],ATOMIC_EXECUTOR_ADDRESS);
+      return [100000n,25000n,20000000n,1000000000n];
+    },
+    getGasPrice:async()=>30000000n,
+  };
+  const cost=await calibrateResearchCost({
+    client,cycle,amountIn:1000n,quoterGasEstimate:120000n,ethUsdPrice:3000,
+    gasBufferBps:2000,fallbackExtraCostsUsd:.05,blockNumber:50n,
+    executorGasEstimate:200000n,executorTarget:ATOMIC_EXECUTOR_ADDRESS,executorCalldata:'0x1234',
+  });
+  assert.equal(cost.mode,'atomic-override-nitro-calibrated');
+  assert.equal(cost.executionGasSource,'state-override-estimateGas');
+  assert.equal(cost.gasUnitsResearch,240000n);
+  assert.equal(Number(cost.gasUsd.toFixed(8)),.0216);
+  assert.equal(Number(cost.extraCostsUsd.toFixed(8)),.0015);
+});
+
+test('economic quote fails closed when atomic executor output differs from canonical V4Quoter', async () => {
+  const mid='0x4444444444444444444444444444444444444444';
+  const cycle={
+    token,base:zeroAddress,baseSymbol:'ETH',buyMarket:0,sellMarket:1,
+    referenceToBase:[],hopCount:2,allV4:true,hooklessV4:true,
+    hops:[
+      {input:zeroAddress,output:mid,key:poolKeyFor(mid,zeroAddress,3000,60),v3:false,role:'reference'},
+      {input:mid,output:zeroAddress,key:poolKeyFor(mid,zeroAddress,500,10),v3:false,role:'reference'},
+    ],
+  };
+  const prepared={
+    launch:{},snapshot:{},route,cycle,
+    truth:{blockNumber:50n,cycle,states:{},infinitesimalMultiplier:1.1,infinitesimalEdgeBps:1000,passesInfinitesimalEdge:true,activeLiquidityReady:true},
+    screen:{},baseDecimals:18,baseUsdPrice:3000,ethUsdPrice:3000,seedUsd:null,seedTrusted:false,sizingAmountsUsd:[],
+  };
+  const client={
+    simulateContract:async()=>({result:[1100000000000000n,120000n]}),
+    request:async ({method})=>{
+      if(method==='eth_call')return encodeFunctionResult({
+        abi:atomicExecutorAbi,functionName:'executeCycle',result:[1090000000000000n,90000000000000n],
+      });
+      if(method==='eth_estimateGas')return '0x30d40';
+      throw Error('unexpected');
+    },
+  };
+  await assert.rejects(
+    ()=>quotePreparedEconomicCandidate(client,prepared,3,{extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:50n}),
+    /amountOut differs/,
+  );
 });

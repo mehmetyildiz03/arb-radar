@@ -1,0 +1,50 @@
+name: v0.9 Gross Positive Capture
+
+on:
+  push:
+    branches: [v0.9-atomic-override]
+    paths:
+      - '.github/workflows/v09-gross-positive-capture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Search several fresh blocks for a gross-positive cycle
+        shell: bash
+        env:
+          TRUTH_LAUNCH_LIMIT: 30
+          ATOMIC_SMOKE_TOP: 30
+          ATOMIC_SMOKE_SIZES: 0.001,0.003,0.01,0.03,0.10,0.30,1
+        run: |
+          set -euo pipefail
+          rm -f /tmp/v09-capture.log
+          captured=0
+          for attempt in 1 2 3 4 5 6; do
+            echo "=== capture attempt $attempt/6 ===" | tee -a /tmp/v09-capture.log
+            node scripts/v09-atomic-override-smoke.mjs | tee /tmp/v09-attempt.log
+            cat /tmp/v09-attempt.log >> /tmp/v09-capture.log
+            if grep -q '"executionOutcome":"gross-positive-success"' /tmp/v09-attempt.log; then
+              captured=1
+              break
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 12; fi
+          done
+          if [ "$captured" -eq 1 ]; then
+            echo "GROSS_POSITIVE_CAPTURED=1"
+          else
+            echo "GROSS_POSITIVE_CAPTURED=0"
+            echo "No gross-positive cycle was observed during this bounded capture window; this is not a test failure."
+          fi
