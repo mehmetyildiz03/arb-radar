@@ -25,7 +25,7 @@ import {
 } from '../dist/economic/v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
 import { quoteMixedCycle } from '../dist/economic/mixedQuote.js';
-import { buildUniversalMixedPlan, simulateUniversalMixedAtomic } from '../dist/economic/universalMixed.js';
+import { buildUniversalMixedPlan, simulateUniversalMixedParity, simulateUniversalMixedAtomic } from '../dist/economic/universalMixed.js';
 import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js';
 import { encodeRepresentativeExecutorCall, readNitroFeeComponents, calibrateResearchCost } from '../dist/economic/nitroFees.js';
 import { atomicExecutorAbi, atomicExecutorArtifact, encodeAtomicExecutorCall, simulateAtomicExecutor, ATOMIC_EXECUTOR_ADDRESS } from '../dist/economic/atomicExecutor.js';
@@ -1116,4 +1116,50 @@ test('Universal Router mixed atomic simulation proves exact-output parity and ga
 test('Universal Router mixed atomic simulation rejects gross-negative quote', async () => {
   const quote={amountIn:100n,amountOut:99n};
   await assert.rejects(()=>simulateUniversalMixedAtomic({},quote),/gross-positive/);
+});
+
+
+test('Universal Router mixed parity can be proven for a gross-negative quote without promoting it to atomic profit', async () => {
+  const weth='0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73';
+  const qa='0x1111111111111111111111111111111111111111';
+  const qb='0x2222222222222222222222222222222222222222';
+  const tokenX='0x3333333333333333333333333333333333333333';
+  const cycle={
+    token:tokenX,buyMarket:0,sellMarket:1,base:weth,baseSymbol:'WETH',
+    referenceToBase:[],hopCount:4,allV4:false,hooklessV4:false,
+    hops:[
+      {input:weth,output:qa,key:poolKeyFor(qa,weth,3000,60),v3:true,role:'reference'},
+      {input:qa,output:tokenX,key:poolKeyFor(tokenX,qa,30000,10),v3:false,role:'par-buy'},
+      {input:tokenX,output:qb,key:poolKeyFor(tokenX,qb,30000,10),v3:false,role:'par-sell'},
+      {input:qb,output:weth,key:poolKeyFor(qb,weth,3000,60),v3:true,role:'reference'},
+    ],
+  };
+  const quote={
+    blockNumber:123n,cycle,amountIn:100n,amountOut:90n,gasEstimateProxy:444n,
+    grossMultiplier:.9,atomicVerified:false,
+    steps:[
+      {protocol:'v3',hopStart:0,hopEnd:0,amountIn:100n,amountOut:200n,gasEstimate:111n},
+      {protocol:'v4',hopStart:1,hopEnd:2,amountIn:200n,amountOut:300n,gasEstimate:222n},
+      {protocol:'v3',hopStart:3,hopEnd:3,amountIn:300n,amountOut:90n,gasEstimate:111n},
+    ],
+  };
+  let calls=0;
+  const client={
+    readContract:async()=>5n,
+    request:async({method})=>{
+      calls++;
+      if(method==='eth_call'){
+        if(calls===1)return '0x';
+        throw Error('strict minimum reverted');
+      }
+      if(method==='eth_estimateGas')return '0x186a0';
+      throw Error('unexpected rpc');
+    },
+  };
+  const simulated=await simulateUniversalMixedParity(client,quote);
+  assert.equal(simulated.atomicVerified,true);
+  assert.equal(simulated.exactOutputParity,true);
+  assert.equal(simulated.grossProfit,-10n);
+  assert.equal(simulated.gasEstimate,100000n);
+  await assert.rejects(()=>simulateUniversalMixedAtomic(client,quote),/gross-positive/);
 });
