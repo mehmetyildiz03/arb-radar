@@ -23,7 +23,8 @@
     "recheck:historical-cost": "npm run build && node scripts/v083-historical-cost-recheck.mjs",
     "live:atomic-smoke": "npm run build && node scripts/v09-atomic-override-smoke.mjs",
     "diagnose:route-coverage": "npm run build && node scripts/v10-route-coverage.mjs",
-    "live:mixed-smoke": "npm run build && node scripts/v10-mixed-quote-smoke.mjs"
+    "live:mixed-smoke": "npm run build && node scripts/v10-mixed-quote-smoke.mjs",
+    "live:mixed-atomic-smoke": "npm run build && node scripts/v10-mixed-atomic-smoke.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
