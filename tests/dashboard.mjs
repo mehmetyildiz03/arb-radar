@@ -276,3 +276,76 @@ test('unverified legacy positive quote never becomes a verified green candidate'
     rmSync(dir,{recursive:true,force:true});
   }
 });
+
+
+test('dashboard recognizes v0.10 mixed Universal Router parity as atomic verified and exposes coverage telemetry', () => {
+  const dir=mkdtempSync(join(tmpdir(),'arb-radar-v10-dashboard-'));
+  const dbPath=join(dir,'radar.sqlite');
+  const store=new ResearchStore(dbPath);
+  const now=2_100_000_000_000;
+  const run={runId:'run-v10',engineVersion:'0.10.0-mixed-route-coverage',runStartedAtMs:now-1000};
+  try {
+    store.record('radar_runs',run.runId,run,{timestampMs:run.runStartedAtMs,blockNumber:null,source:'fixture'});
+    store.record('route_screens','mixed:1',{
+      ...run,discoveredAtMs:now-800,
+      route:{token:'0xmixed',buy:{quoteSymbol:'AI'},sell:{quoteSymbol:'MOO'}},
+      screen:{passesFeeFloor:true,grossSpreadPct:1.25},
+      enginePath:'mixed-v3-v4-universal-router',
+    },{timestampMs:now-800,blockNumber:50n,source:'fixture'});
+    store.record('executable_quotes','mixed:1',{
+      ...run,discoveredAtMs:now-800,
+      route:{token:'0xmixed',buy:{quoteSymbol:'AI'},sell:{quoteSymbol:'MOO'}},
+      screen:{grossSpreadPct:1.25},
+      verifiedClosedCycle:true,
+      atomicVerified:true,
+      engine:'v0.10-mixed-route-coverage',
+      truthLevel:'universal-router-state-override',
+      base:'0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
+      baseSymbol:'WETH',
+      hopCount:4,
+      v3HopCount:2,
+      v4HopCount:2,
+      netProfitUsd:.12,
+      costBreakdown:{
+        inputUsd:1,outputUsd:1.15,grossQuotedEdgeUsd:.15,gasUsd:.01,extraCostsUsd:.005,safetyMarginUsd:.015,
+        explicitCostsUsd:.03,netProfitUsd:.12,netReturnPct:12,afterGasUsd:.14,afterExtraCostsUsd:.135,
+        embeddedRoutingMarketEffect:'included-in-router-output-not-separately-observable',reason:'positive-after-explicit-costs'
+      },
+      quote:{
+        inputUsd:1,outputUsd:1.15,gasUsd:.01,extraCostsUsd:.005,safetyMarginUsd:.015,
+        blockNumber:'50',green:true,verifiedClosedCycle:true,atomicVerified:true,
+        engine:'v0.10-mixed-route-coverage',truthLevel:'universal-router-state-override',
+        baseSymbol:'WETH',hopCount:4,
+        executionGasSource:'state-override-estimateGas',
+        segmentedGasEstimateProxy:'267415',
+        universalRouter:{atomicVerified:true,exactOutputParity:true,gasEstimate:'446946',source:'universal-router-state-override'}
+      }
+    },{timestampMs:now-700,blockNumber:50n,source:'fixture'});
+    store.record('radar_runtime','tick-v10',{
+      ...run,durationMs:4200,valuationFetches:1,probeConcurrency:2,sizingConcurrency:1,sizingQuoteConcurrency:2,candidateMaxQueueMs:2500,
+      v4Candidates:1,mixedCandidates:3,mixedPairsConsidered:12,mixedPairsQuoted:6,mixedScreenFailures:1,
+      scheduler:{queued:4,droppedStale:0,probesStarted:4,probesCompleted:4,sizingStarted:1,sizingCompleted:1,maxActiveProbes:2,maxActiveSizing:1}
+    },{timestampMs:now-100,blockNumber:50n,source:'fixture'});
+    store.close();
+
+    const snapshot=buildDashboardSnapshot(dbPath,100,now,60_000,'current');
+    assert.equal(snapshot.radar.positiveExecutableQuotes,1);
+    assert.equal(snapshot.opportunities.length,1);
+    const item=snapshot.opportunities[0];
+    assert.equal(item.status,'positive');
+    assert.equal(item.engine,'v0.10-mixed-route-coverage');
+    assert.equal(item.firstProbeAtomicVerified,true);
+    assert.equal(item.bestObservedAtomicVerified,true);
+    assert.equal(item.firstProbeQuoterGasEstimate,'267415');
+    assert.equal(item.firstProbeExecutorGasEstimate,'446946');
+    assert.equal(item.firstProbeExecutionGasSource,'state-override-estimateGas');
+    assert.equal(snapshot.runtime.v4Candidates,1);
+    assert.equal(snapshot.runtime.mixedCandidates,3);
+    assert.equal(snapshot.runtime.mixedPairsConsidered,12);
+    assert.equal(snapshot.runtime.mixedPairsQuoted,6);
+    assert.equal(snapshot.runtime.mixedScreenFailures,1);
+  } finally {
+    try { store.close(); } catch {}
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
