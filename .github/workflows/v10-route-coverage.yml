@@ -34,3 +34,7 @@ jobs:
         env:
           MIXED_SMOKE_LAUNCH_LIMIT: 30
         run: node scripts/v10-mixed-quote-smoke.mjs
+      - name: Prove one real mixed cycle has Universal Router atomic parity
+        env:
+          MIXED_ATOMIC_SMOKE_LAUNCH_LIMIT: 30
+        run: node scripts/v10-mixed-atomic-smoke.mjs
