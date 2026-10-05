@@ -150,6 +150,11 @@ export interface DashboardSnapshot {
     sizingQuoteConcurrency: number | null;
     candidateMaxQueueMs: number | null;
     valuationFetches: number;
+    v4Candidates: number;
+    mixedCandidates: number;
+    mixedPairsConsidered: number;
+    mixedPairsQuoted: number;
+    mixedScreenFailures: number;
   };
 }
 
@@ -387,11 +392,17 @@ function quoteExecutionMeta(quote: Record<string,unknown> | undefined): {
   const atomic = quote?.atomicExecutor && typeof quote.atomicExecutor === 'object' && !Array.isArray(quote.atomicExecutor)
     ? quote.atomicExecutor as Record<string,unknown>
     : null;
+  const universal = quote?.universalRouter && typeof quote.universalRouter === 'object' && !Array.isArray(quote.universalRouter)
+    ? quote.universalRouter as Record<string,unknown>
+    : null;
   return {
     gasSource: typeof quote?.executionGasSource === 'string' ? quote.executionGasSource : null,
-    atomicVerified: atomic?.source === 'state-override-eth-call',
-    quoterGasEstimate: scalarText(quote?.quoterGasEstimate),
-    executorGasEstimate: scalarText(atomic?.gasEstimate),
+    atomicVerified:
+      quote?.atomicVerified === true ||
+      atomic?.source === 'state-override-eth-call' ||
+      universal?.atomicVerified === true,
+    quoterGasEstimate: scalarText(quote?.quoterGasEstimate ?? quote?.segmentedGasEstimateProxy),
+    executorGasEstimate: scalarText(atomic?.gasEstimate ?? universal?.gasEstimate),
   };
 }
 
@@ -576,7 +587,7 @@ function summarizeOpportunities(rows: ObservationRow[], fromMs: number, toMs: nu
   const opportunities = allMutable
     .map(({ _hasNumeric, _firstProbeId, _bestTimestampMs, ...item }) => {
       if (_hasNumeric) {
-        const needsAtomic = typeof item.engine === 'string' && item.engine.startsWith('v0.9');
+        const needsAtomic = typeof item.engine === 'string' && (item.engine.startsWith('v0.9') || item.engine.startsWith('v0.10'));
         const verified = needsAtomic ? item.bestObservedAtomicVerified : item.verifiedClosedCycle;
         item.status = verified && (item.bestObservedNetProfitUsd ?? 0) > 0 ? 'positive' : 'nonpositive';
       }
@@ -701,7 +712,7 @@ export function buildDashboardSnapshot(
       simulation:{},
       dominantSimulationStep:null,
     },
-    runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,sizingQuoteConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0 },
+    runtime: { lastTickAtMs:null,tickDurationMs:null,queued:0,droppedStale:0,probesStarted:0,probesCompleted:0,sizingStarted:0,sizingCompleted:0,maxActiveProbes:0,maxActiveSizing:0,probeConcurrency:null,sizingConcurrency:null,sizingQuoteConcurrency:null,candidateMaxQueueMs:null,valuationFetches:0,v4Candidates:0,mixedCandidates:0,mixedPairsConsidered:0,mixedPairsQuoted:0,mixedScreenFailures:0 },
   };
 
   if (!existsSync(path)) return emptyBase;
@@ -746,6 +757,11 @@ export function buildDashboardSnapshot(
         sizingQuoteConcurrency: num(payload.sizingQuoteConcurrency),
         candidateMaxQueueMs: num(payload.candidateMaxQueueMs),
         valuationFetches: num(payload.valuationFetches) ?? 0,
+        v4Candidates: num(payload.v4Candidates) ?? 0,
+        mixedCandidates: num(payload.mixedCandidates) ?? 0,
+        mixedPairsConsidered: num(payload.mixedPairsConsidered) ?? 0,
+        mixedPairsQuoted: num(payload.mixedPairsQuoted) ?? 0,
+        mixedScreenFailures: num(payload.mixedScreenFailures) ?? 0,
       };
       break;
     }
