@@ -30,6 +30,7 @@ import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js
 import { encodeRepresentativeExecutorCall, readNitroFeeComponents, calibrateResearchCost } from '../dist/economic/nitroFees.js';
 import { atomicExecutorAbi, atomicExecutorArtifact, encodeAtomicExecutorCall, simulateAtomicExecutor, ATOMIC_EXECUTOR_ADDRESS } from '../dist/economic/atomicExecutor.js';
 import { quotePreparedEconomicCandidate } from '../dist/economic/engine.js';
+import { prepareLaunchMixedCandidates, quotePreparedMixedCandidate } from '../dist/economic/mixedEngine.js';
 import { classifyV4QuoteError } from '../dist/economic/v4Truth.js';
 
 const token = '0x1111111111111111111111111111111111111111';
@@ -1162,4 +1163,107 @@ test('Universal Router mixed parity can be proven for a gross-negative quote wit
   assert.equal(simulated.grossProfit,-10n);
   assert.equal(simulated.gasEstimate,100000n);
   await assert.rejects(()=>simulateUniversalMixedAtomic(client,quote),/gross-positive/);
+});
+
+
+function mixedProductionFixture() {
+  const weth='0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73';
+  const qa='0x7777777777777777777777777777777777777777';
+  const qb='0x8888888888888888888888888888888888888888';
+  const tokenX='0x9999999999999999999999999999999999999999';
+  const v3a=poolKeyFor(qa,weth,3000,60);
+  const v3b=poolKeyFor(qb,weth,3000,60);
+  const parA=poolKeyFor(tokenX,qa,30000,10);
+  const parB=poolKeyFor(tokenX,qb,30000,10);
+  const launch={
+    token:tokenX,kind:'multi',router,factory:router,locker:router,deployer:router,creatorFeeRecipient:router,
+    poolFee:30000,tickSpacing:10,baseFeeBps:100,creatorTaxBps:200,protocolFeeShareBps:0,launchedAt:1,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,poolKey:parA,poolId:poolIdOf(parA),tokenIsCurrency0:parA.currency0===tokenX,positionId:1n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,poolKey:parB,poolId:poolIdOf(parB),tokenIsCurrency0:parB.currency0===tokenX,positionId:2n,liquidity:1n,tickLower:-10,tickUpper:10,phantomQuote:1n},
+    ],
+    routes:[
+      {buyHops:[{key:v3a,v3:true}],sellHops:[{key:v3a,v3:true}],qualifies:true},
+      {buyHops:[{key:v3b,v3:true}],sellHops:[{key:v3b,v3:true}],qualifies:true},
+    ],
+  };
+  const snapshot={
+    token:tokenX,symbol:'MX',kind:'multi',poolFeeUnits:30000,marketCount:2,
+    markets:[
+      {index:0,pairToken:qa,quoteSymbol:'QA',quoteDecimals:18,tokenPriceEth:1,priceAtMs:1},
+      {index:1,pairToken:qb,quoteSymbol:'QB',quoteDecimals:18,tokenPriceEth:1.2,priceAtMs:1},
+    ],
+  };
+  return {weth,qa,qb,tokenX,launch,snapshot};
+}
+
+function mixedQuoteClient(multiplier=2n) {
+  let universalCalls=0;
+  return {
+    simulateContract:async args=>{
+      if(args.functionName==='quoteExactInputSingle'){
+        const amount=args.args[0].amountIn;
+        return {result:[amount*multiplier,0n,0,90_000n]};
+      }
+      if(args.functionName==='quoteExactInput'){
+        const amount=args.args[0].exactAmount;
+        return {result:[amount*multiplier,80_000n]};
+      }
+      throw Error('unexpected simulateContract '+String(args.functionName));
+    },
+    readContract:async args=>{
+      if(args.functionName==='balanceOf')return 0n;
+      if(args.functionName==='gasEstimateComponents')return [350_000n,50_000n,30_000_000n,1_000_000_000n];
+      throw Error('unexpected readContract '+String(args.functionName));
+    },
+    request:async({method})=>{
+      if(method==='eth_call'){
+        universalCalls++;
+        if(universalCalls%2===1)return '0x';
+        throw Error('strict output minimum reverted');
+      }
+      if(method==='eth_estimateGas')return '0x493e0';
+      throw Error('unexpected rpc '+method);
+    },
+    getGasPrice:async()=>30_000_000n,
+    getBlockNumber:async()=>50n,
+  };
+}
+
+test('production mixed preparation admits a mixed-only WETH cycle only after exact same-block gross-positive probe', async () => {
+  const {launch,snapshot,weth}=mixedProductionFixture();
+  const result=await prepareLaunchMixedCandidates(mixedQuoteClient(),launch,snapshot,3000,{
+    minTradeUsd:.01,blockNumber:50n,pairLimit:1,probeConcurrency:1,
+  });
+  assert.equal(result.failures.length,0);
+  assert.equal(result.pairsConsidered,2);
+  assert.equal(result.pairsQuoted,1);
+  assert.equal(result.candidates.length,1);
+  const candidate=result.candidates[0];
+  assert.equal(candidate.cycle.base.toLowerCase(),weth.toLowerCase());
+  assert.equal(candidate.cycle.hopCount,4);
+  assert.equal(candidate.screen.v3HopCount,2);
+  assert.equal(candidate.screen.v4HopCount,2);
+  assert.ok(candidate.screen.exactProbeOutputRaw>candidate.screen.exactProbeInputRaw);
+  assert.ok(candidate.priorityBps>0);
+});
+
+test('production mixed quote requires Universal Router parity and calibrated net before green', async () => {
+  const {launch,snapshot}=mixedProductionFixture();
+  const client=mixedQuoteClient();
+  const prepared=(await prepareLaunchMixedCandidates(client,launch,snapshot,3000,{
+    minTradeUsd:.01,blockNumber:50n,pairLimit:1,probeConcurrency:1,
+  })).candidates[0];
+  assert.ok(prepared);
+  const quote=await quotePreparedMixedCandidate(client,prepared,.01,{
+    fallbackExtraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:50n,
+  });
+  assert.equal(quote.verifiedClosedCycle,true);
+  assert.equal(quote.atomicVerified,true);
+  assert.equal(quote.exactOutputParity,true);
+  assert.equal(quote.executionGasSource,'state-override-estimateGas');
+  assert.equal(quote.universalRouter.gasEstimate,300000n);
+  assert.ok(quote.amountOutRaw>quote.amountInRaw);
+  assert.ok(quote.costBreakdown.netProfitUsd>0);
+  assert.equal(quote.green,true);
 });
