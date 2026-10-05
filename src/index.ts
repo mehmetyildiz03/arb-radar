@@ -287,10 +287,10 @@ async function tick(): Promise<void> {
     },
     async(queued,controls)=>{
       const candidate=queued.value;
-      const {prepared,discoveredAtMs,key}=candidate;
       const trackedInput=Math.min(config.minCandidateTradeUsd,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
 
       if(candidate.kind==='mixed'){
+        const {prepared,discoveredAtMs,key}=candidate;
         const persistQuote=(quote:MixedExecutionQuote,phase:string)=>{
           store.record('executable_quotes',key,withRun(run,{
             discoveredAtMs,
@@ -402,6 +402,7 @@ async function tick(): Promise<void> {
         return {positive};
       }
 
+      const {prepared,discoveredAtMs,key}=candidate;
       const persistQuote=(quote:EconomicExecutionQuote,phase:string)=>{
         store.record('executable_quotes',key,withRun(run,{
           discoveredAtMs,
