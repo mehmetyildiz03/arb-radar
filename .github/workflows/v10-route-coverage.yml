@@ -1,0 +1,32 @@
+name: v0.10 Route Coverage
+
+on:
+  push:
+    branches: [v0.10-route-coverage]
+    paths:
+      - 'scripts/v10-route-coverage.mjs'
+      - 'src/economic/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/v10-route-coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-route-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Audit recent structural route coverage
+        env:
+          ROUTE_COVERAGE_LAUNCH_LIMIT: 30
+        run: node scripts/v10-route-coverage.mjs | tee /tmp/v10-route-coverage.json
