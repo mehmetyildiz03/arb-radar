@@ -100,7 +100,7 @@ function directedRoute(snapshot:LaunchSnapshot,buyIndex:number,sellIndex:number)
 function indexerPriority(snapshot:LaunchSnapshot,buyIndex:number,sellIndex:number):number {
   const buy=marketSnapshot(snapshot,buyIndex)?.tokenPriceEth;
   const sell=marketSnapshot(snapshot,sellIndex)?.tokenPriceEth;
-  if(typeof buy!=='number'||typeof sell!=='number'||!Number.isFinite(buy)||!Number.isFinite(sell)||buy<=0||sell<=0) return -Infinity;
+  if(typeof buy!=='number'||typeof sell!=='number'||!Number.isFinite(buy)||!Number.isFinite(sell)||buy<=0||sell<=0) return -1e12;
   return ((sell/buy)-1)*10_000;
 }
 
