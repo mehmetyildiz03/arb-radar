@@ -341,6 +341,10 @@ function render(data){
   setText('runtimeProbeConcurrency',runtime.probeConcurrency??'—');setText('runtimeSizingConcurrency',runtime.sizingConcurrency??'—');
   setText('runtimeSizingQuoteConcurrency',runtime.sizingQuoteConcurrency??'—');
   setText('runtimeDuration',fmtMs(runtime.tickDurationMs));setText('runtimeValuation',nf.format(runtime.valuationFetches??0));
+  setText('runtimeV4Candidates',nf.format(runtime.v4Candidates??0));
+  setText('runtimeMixedCandidates',nf.format(runtime.mixedCandidates??0));
+  setText('runtimeMixedPairs',nf.format(runtime.mixedPairsQuoted??0)+' / '+nf.format(runtime.mixedPairsConsidered??0));
+  setText('runtimeMixedFailures',nf.format(runtime.mixedScreenFailures??0));
 
   const truncated=Object.values(data.window.truncated).some(Boolean);
   setText('qualityNote',truncated?'Analiz satır sınırına ulaştı; bazı oranlar kısmi olabilir. Quote tamamlanması capture/inclusion değildir.':'Quote tamamlanması capture/inclusion değildir.');
