@@ -24,6 +24,7 @@ import {
   directionalProtocolFee, cycleSpotMultiplier, cycleTruthFromStates, readCycleTruth, quoteClosedCycle
 } from '../dist/economic/v4Truth.js';
 import { optimalBaseInputConstantProduct, seedValidationAmounts } from '../dist/economic/seed.js';
+import { quoteMixedCycle } from '../dist/economic/mixedQuote.js';
 import { buildDepthLadder, runDepthAwareSizing } from '../dist/economic/depth.js';
 import { encodeRepresentativeExecutorCall, readNitroFeeComponents, calibrateResearchCost } from '../dist/economic/nitroFees.js';
 import { atomicExecutorAbi, atomicExecutorArtifact, encodeAtomicExecutorCall, simulateAtomicExecutor, ATOMIC_EXECUTOR_ADDRESS } from '../dist/economic/atomicExecutor.js';
@@ -959,4 +960,68 @@ test('economic quote fails closed when atomic executor output differs from canon
     ()=>quotePreparedEconomicCandidate(client,prepared,3,{extraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:50n}),
     /amountOut differs/,
   );
+});
+
+
+test('mixed quote engine chains V3 and V4 segments at one block without promoting atomic evidence', async () => {
+  const weth='0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73';
+  const qa='0x1111111111111111111111111111111111111111';
+  const qb='0x2222222222222222222222222222222222222222';
+  const tokenX='0x3333333333333333333333333333333333333333';
+  const cycle={
+    token:tokenX,
+    buyMarket:0,
+    sellMarket:1,
+    base:weth,
+    baseSymbol:'WETH',
+    referenceToBase:[],
+    hopCount:4,
+    allV4:false,
+    hooklessV4:false,
+    hops:[
+      {input:weth,output:qa,key:poolKeyFor(qa,weth,3000,60),v3:true,role:'reference'},
+      {input:qa,output:tokenX,key:poolKeyFor(tokenX,qa,30000,10),v3:false,role:'par-buy'},
+      {input:tokenX,output:qb,key:poolKeyFor(tokenX,qb,30000,10),v3:false,role:'par-sell'},
+      {input:qb,output:weth,key:poolKeyFor(qb,weth,3000,60),v3:true,role:'reference'},
+    ],
+  };
+  const seen=[];
+  const client={
+    simulateContract:async args=>{
+      seen.push(args);
+      if(args.functionName==='quoteExactInputSingle'){
+        const amount=args.args[0].amountIn;
+        return {result:[amount*2n,0n,0,111n]};
+      }
+      if(args.functionName==='quoteExactInput'){
+        const amount=args.args[0].exactAmount;
+        assert.equal(args.args[0].path.length,2);
+        return {result:[amount*3n,222n]};
+      }
+      throw Error('unexpected call');
+    },
+  };
+  const quoted=await quoteMixedCycle(client,cycle,10n,123n);
+  assert.equal(quoted.amountOut,120n);
+  assert.equal(quoted.gasEstimateProxy,444n);
+  assert.equal(quoted.steps.length,3);
+  assert.deepEqual(quoted.steps.map(x=>x.protocol),['v3','v4','v3']);
+  assert.deepEqual(quoted.steps.map(x=>x.amountIn),[10n,20n,60n]);
+  assert.equal(quoted.atomicVerified,false);
+  assert.equal(seen.every(x=>x.blockNumber===123n),true);
+});
+
+test('mixed quote engine fails closed on repeated pool cycles', async () => {
+  const a='0x1111111111111111111111111111111111111111';
+  const b='0x2222222222222222222222222222222222222222';
+  const key=poolKeyFor(a,b,3000,60);
+  const cycle={
+    token:a,buyMarket:0,sellMarket:1,base:a,baseSymbol:'A',
+    referenceToBase:[],hopCount:2,allV4:false,hooklessV4:false,
+    hops:[
+      {input:a,output:b,key,v3:true,role:'reference'},
+      {input:b,output:a,key,v3:true,role:'reference'},
+    ],
+  };
+  await assert.rejects(()=>quoteMixedCycle({simulateContract:async()=>{throw Error('should not call')}},cycle,1n,1n),/Repeated pool/);
 });
