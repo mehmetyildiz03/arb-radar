@@ -30,3 +30,7 @@ jobs:
         env:
           ROUTE_COVERAGE_LAUNCH_LIMIT: 30
         run: node scripts/v10-route-coverage.mjs | tee /tmp/v10-route-coverage.json
+      - name: Quote one real mixed V3/V4 cycle
+        env:
+          MIXED_SMOKE_LAUNCH_LIMIT: 30
+        run: node scripts/v10-mixed-quote-smoke.mjs
