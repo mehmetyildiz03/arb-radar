@@ -18,9 +18,15 @@ import {
   type EconomicExecutionQuote,
   type PreparedEconomicCandidate,
 } from './economic/engine.js';
+import {
+  prepareLaunchMixedCandidates,
+  quotePreparedMixedCandidate,
+  type MixedExecutionQuote,
+  type PreparedMixedCandidate,
+} from './economic/mixedEngine.js';
 import { runDepthAwareSizing } from './economic/depth.js';
 import { classifyV4QuoteError } from './economic/v4Truth.js';
-import type { OptimizedOpportunity } from './domain.js';
+import type { DirectedRoute, OptimizedOpportunity } from './domain.js';
 
 const config = loadConfig();
 const run = createRunContext();
@@ -74,6 +80,7 @@ async function valuation(): Promise<{ usdPerEth:number; timestampMs:number; sour
 }
 
 async function mapBounded<T,R>(items:readonly T[], concurrency:number, worker:(item:T,index:number)=>Promise<R>):Promise<R[]> {
+  if(items.length===0) return [];
   const out=new Array<R>(items.length);
   let next=0;
   async function runner(){
@@ -87,29 +94,44 @@ async function mapBounded<T,R>(items:readonly T[], concurrency:number, worker:(i
   return out;
 }
 
-interface TruthCandidate {
-  prepared: PreparedEconomicCandidate;
-  discoveredAtMs: number;
-  key: string;
-}
+type TruthCandidate =
+  | {
+      kind:'v4';
+      prepared:PreparedEconomicCandidate;
+      discoveredAtMs:number;
+      key:string;
+      priorityBps:number;
+      screenBlock:bigint;
+    }
+  | {
+      kind:'mixed';
+      prepared:PreparedMixedCandidate;
+      discoveredAtMs:number;
+      key:string;
+      priorityBps:number;
+      screenBlock:bigint;
+    };
 
-function candidateKey(prepared:PreparedEconomicCandidate, discoveredAtMs:number):string {
+type RadarQuote = EconomicExecutionQuote | MixedExecutionQuote;
+
+function candidateKey(kind:'v4'|'mixed', prepared:PreparedEconomicCandidate|PreparedMixedCandidate, screenBlock:bigint, discoveredAtMs:number):string {
   return [
+    kind,
     prepared.launch.token,
     prepared.cycle.buyMarket,
     prepared.cycle.sellMarket,
     prepared.cycle.base,
-    prepared.truth.blockNumber.toString(),
+    screenBlock.toString(),
     Math.floor(discoveredAtMs),
   ].join(':');
 }
 
-function optimizedFromQuote(prepared:PreparedEconomicCandidate, quote:EconomicExecutionQuote):OptimizedOpportunity|null {
+function optimizedFromQuote(route:DirectedRoute, quote:RadarQuote):OptimizedOpportunity|null {
   const net=quote.costBreakdown.netProfitUsd;
   if(net<config.minNetProfitUsd || net<=0) return null;
   if(quote.inputUsd+quote.gasUsd+(quote.extraCostsUsd??0)>config.paperCapitalUsd) return null;
   return {
-    route:prepared.route,
+    route,
     inputUsd:quote.inputUsd,
     outputUsd:quote.outputUsd,
     gasUsd:quote.gasUsd,
@@ -128,6 +150,9 @@ async function tick(): Promise<void> {
   let metadataLoaded=0;
   let truthPairsPotential=0;
   let truthScanFailures=0;
+  let mixedPairsConsidered=0;
+  let mixedPairsQuoted=0;
+  let mixedScreenFailures=0;
 
   const perLaunch = await mapBounded(
     snapshots,
@@ -142,7 +167,7 @@ async function tick(): Promise<void> {
         store.record('launches', snapshot.token, withRun(run, {
           snapshot,
           metadata:meta,
-          note:'Indexer is discovery/seed metadata only; executable direction comes from same-block onchain state',
+          note:'Indexer is discovery/seed metadata only; v0.10 executable truth comes from all-V4 StateView/atomic simulation or mixed canonical segmented quote + Universal Router parity',
         }), {timestampMs:Date.now(),blockNumber:screenBlock,source:'arb-radar:economic-truth'});
         for(const market of snapshot.markets){
           store.record('market_snapshots', `${snapshot.token}:${market.index}`, withRun(run,{market}), {
@@ -150,19 +175,35 @@ async function tick(): Promise<void> {
           });
         }
 
-        const prepared=await prepareLaunchEconomicCandidates(client,meta,snapshot,ethValuation!.usdPerEth,{
-          paperCapitalUsd:config.paperCapitalUsd,
-          maxTradeUsd:config.maxCandidateTradeUsd,
-          minTradeUsd:config.minCandidateTradeUsd,
-          blockNumber:screenBlock,
-        });
-        return prepared.map(item=>{
+        const [preparedV4,mixedPrepared] = await Promise.all([
+          prepareLaunchEconomicCandidates(client,meta,snapshot,ethValuation!.usdPerEth,{
+            paperCapitalUsd:config.paperCapitalUsd,
+            maxTradeUsd:config.maxCandidateTradeUsd,
+            minTradeUsd:config.minCandidateTradeUsd,
+            blockNumber:screenBlock,
+          }),
+          prepareLaunchMixedCandidates(client,meta,snapshot,ethValuation!.usdPerEth,{
+            minTradeUsd:config.minCandidateTradeUsd,
+            blockNumber:screenBlock,
+            pairLimit:config.mixedPairLimitPerLaunch,
+            probeConcurrency:config.mixedProbeConcurrency,
+          }),
+        ]);
+
+        mixedPairsConsidered += mixedPrepared.pairsConsidered;
+        mixedPairsQuoted += mixedPrepared.pairsQuoted;
+        mixedScreenFailures += mixedPrepared.failures.length;
+
+        const out:TruthCandidate[]=[];
+
+        for(const item of preparedV4){
           const discoveredAtMs=monotonicClock.now();
-          const key=candidateKey(item,discoveredAtMs);
+          const key=candidateKey('v4',item,item.truth.blockNumber,discoveredAtMs);
           store.record('route_screens',key,withRun(run,{
             route:item.route,
             screen:item.screen,
             discoveredAtMs,
+            enginePath:'all-v4-atomic-override',
             economicTruth:{
               truthLevel:item.screen.truthLevel,
               screenBlock:item.truth.blockNumber,
@@ -174,8 +215,46 @@ async function tick(): Promise<void> {
               seedUsd:item.seedUsd,
             },
           }),{timestampMs:discoveredAtMs,blockNumber:item.truth.blockNumber,source:'stateview:same-block-v4'});
-          return {prepared:item,discoveredAtMs,key};
-        });
+          out.push({
+            kind:'v4',
+            prepared:item,
+            discoveredAtMs,
+            key,
+            priorityBps:item.truth.infinitesimalEdgeBps,
+            screenBlock:item.truth.blockNumber,
+          });
+        }
+
+        for(const item of mixedPrepared.candidates){
+          const discoveredAtMs=monotonicClock.now();
+          const key=candidateKey('mixed',item,item.screenBlock,discoveredAtMs);
+          store.record('route_screens',key,withRun(run,{
+            route:item.route,
+            screen:item.screen,
+            discoveredAtMs,
+            enginePath:'mixed-v3-v4-universal-router',
+            economicTruth:{
+              truthLevel:item.screen.truthLevel,
+              screenBlock:item.screenBlock,
+              base:item.cycle.base,
+              baseSymbol:item.cycle.baseSymbol,
+              hopCount:item.cycle.hopCount,
+              v3HopCount:item.screen.v3HopCount,
+              v4HopCount:item.screen.v4HopCount,
+              exactProbeEdgeBps:item.screen.exactProbeEdgeBps,
+            },
+          }),{timestampMs:discoveredAtMs,blockNumber:item.screenBlock,source:'mixed-quoter:same-block-probe'});
+          out.push({
+            kind:'mixed',
+            prepared:item,
+            discoveredAtMs,
+            key,
+            priorityBps:item.priorityBps,
+            screenBlock:item.screenBlock,
+          });
+        }
+
+        return out;
       } catch(error){
         truthScanFailures++;
         console.warn(json({paperOnly:true,truthScanUnavailable:snapshot.token,error:String(error),screenBlock}));
@@ -184,6 +263,8 @@ async function tick(): Promise<void> {
     },
   );
   const candidates=perLaunch.flat();
+  const v4Candidates=candidates.filter(c=>c.kind==='v4').length;
+  const mixedCandidates=candidates.filter(c=>c.kind==='mixed').length;
 
   let runtimeMetrics: StageSchedulerMetrics = {
     queued:candidates.length,droppedStale:0,probesStarted:0,probesCompleted:0,
@@ -194,7 +275,7 @@ async function tick(): Promise<void> {
     candidates.map(candidate=>({
       key:candidate.key,
       discoveredAtMs:candidate.discoveredAtMs,
-      priority:candidate.prepared.truth.infinitesimalEdgeBps,
+      priority:candidate.priorityBps,
       value:candidate,
     })),
     {
@@ -205,8 +286,121 @@ async function tick(): Promise<void> {
       onMetrics:metrics=>{runtimeMetrics=metrics;},
     },
     async(queued,controls)=>{
-      const {prepared,discoveredAtMs,key}=queued.value;
+      const candidate=queued.value;
+      const {prepared,discoveredAtMs,key}=candidate;
       const trackedInput=Math.min(config.minCandidateTradeUsd,config.paperCapitalUsd/2,config.maxCandidateTradeUsd);
+
+      if(candidate.kind==='mixed'){
+        const persistQuote=(quote:MixedExecutionQuote,phase:string)=>{
+          store.record('executable_quotes',key,withRun(run,{
+            discoveredAtMs,
+            route:prepared.route,
+            screen:prepared.screen,
+            quote,
+            netProfitUsd:quote.costBreakdown.netProfitUsd,
+            costBreakdown:quote.costBreakdown,
+            verifiedClosedCycle:quote.verifiedClosedCycle,
+            atomicVerified:quote.atomicVerified,
+            exactOutputParity:quote.exactOutputParity,
+            engine:quote.engine,
+            truthLevel:quote.truthLevel,
+            phase,
+            base:quote.base,
+            baseSymbol:quote.baseSymbol,
+            hopCount:quote.hopCount,
+            v3HopCount:quote.v3HopCount,
+            v4HopCount:quote.v4HopCount,
+          }),{timestampMs:Date.now(),blockNumber:quote.blockNumber,source:'arb-radar:v0.10-mixed-atomic-paper'});
+        };
+
+        const {best,samples,timing}=await measureCandidate({
+          discoveredAtMs,
+          withProbePhase:controls.withProbePhase,
+          beforeSizing:controls.waitForProbeStage,
+          withSizingPhase:controls.withSizingPhase,
+          prepare:async()=>prepared,
+          quote:async context=>{
+            const quote=await quotePreparedMixedCandidate(client,context,trackedInput,{
+              fallbackExtraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,
+            });
+            persistQuote(quote,'probe-or-lifecycle');
+            return quote;
+          },
+          size:async context=>{
+            const sizingBlock=await client.getBlockNumber({cacheTime:0});
+            const maxUsd=Math.min(config.paperCapitalUsd,config.maxCandidateTradeUsd);
+            const depth=await runDepthAwareSizing({
+              minUsd:config.minCandidateTradeUsd,
+              maxUsd,
+              quote:amount=>quotePreparedMixedCandidate(client,context,amount,{
+                fallbackExtraCostsUsd:.05,safetyBps:100,gasBufferBps:2000,blockNumber:sizingBlock,
+              }),
+              score:quote=>quote.costBreakdown.netProfitUsd,
+              grossPositive:quote=>quote.outputUsd>quote.inputUsd,
+              classifyFailure:classifyV4QuoteError,
+              onQuote:quote=>persistQuote(quote,'sizing-depth'),
+              onFailure:failure=>store.record('opportunity_lifecycle',key,withRun(run,{
+                discoveredAtMs,
+                depthFailure:{phase:'mixed-sizing-depth',inputUsd:failure.inputUsd,...failure.failure},
+                verifiedClosedCycle:true,
+                atomicVerified:true,
+                engine:'v0.10-mixed-route-coverage',
+              }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:v0.10-mixed-atomic-paper'}),
+            });
+            const bestQuote=depth.bestQuote;
+            const optimized=bestQuote?optimizedFromQuote(context.route,bestQuote):null;
+            store.record('opportunity_lifecycle',key,withRun(run,{
+              depthSizing:{
+                minUsd:config.minCandidateTradeUsd,
+                maxUsd,
+                successfulQuotes:depth.quotes.length,
+                failures:depth.failures.length,
+                firstLiquidityFailureUsd:depth.firstLiquidityFailureUsd,
+                stoppedReason:depth.stoppedReason,
+                bestInputUsd:bestQuote?.inputUsd??null,
+                bestNetProfitUsd:bestQuote?.costBreakdown.netProfitUsd??null,
+              },
+              verifiedClosedCycle:true,
+              atomicVerified:true,
+              engine:'v0.10-mixed-route-coverage',
+            }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:v0.10-mixed-atomic-paper'});
+            return optimized?{
+              ...optimized,
+              sizingMode:'mixed-depth-aware-exact',
+              screenBlock:context.screenBlock,
+              quoteBlock:sizingBlock,
+              firstLiquidityFailureUsd:depth.firstLiquidityFailureUsd,
+            }:null;
+          },
+          profit:q=>q.costBreakdown.netProfitUsd,
+          shouldSize:q=>q.outputUsd>q.inputUsd,
+          sizingSkipReason:'mixed-exact-probe-gross-nonpositive',
+          recordSample:sample=>store.record('opportunity_lifecycle',key,withRun(run,{
+            ...sample,trackedInputUsd:trackedInput,verifiedClosedCycle:true,atomicVerified:true,engine:'v0.10-mixed-route-coverage',
+          }),{timestampMs:sample.completedMs,blockNumber:sample.quote?.blockNumber??null,source:'arb-radar:v0.10-mixed-atomic-paper'}),
+          recordTiming:timing=>store.record('opportunity_lifecycle',key,withRun(run,{
+            measurementTiming:timing,verifiedClosedCycle:true,atomicVerified:true,engine:'v0.10-mixed-route-coverage',
+          }),{timestampMs:monotonicClock.now(),blockNumber:null,source:'arb-radar:v0.10-mixed-atomic-paper'}),
+        });
+
+        const summary=summarizeLifecycle(samples);
+        store.record('opportunity_lifecycle',key,withRun(run,{
+          best,summary,timing,trackedInputUsd:trackedInput,verifiedClosedCycle:true,atomicVerified:true,engine:'v0.10-mixed-route-coverage',
+        }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:v0.10-mixed-atomic-paper'});
+
+        const initial=samples[0];
+        const positive=!!best || !!(initial.quote && initial.netProfitUsd!==null &&
+          initial.netProfitUsd>=config.minNetProfitUsd && initial.quote.green===true);
+        console.log(json({
+          paperOnly:true,verifiedClosedCycle:true,atomicVerified:true,engine:'v0.10-mixed-route-coverage',
+          key,best,summary,timing,
+          base:prepared.cycle.baseSymbol,hopCount:prepared.cycle.hopCount,
+          v3HopCount:prepared.cycle.hops.filter(h=>h.v3).length,
+          v4HopCount:prepared.cycle.hops.filter(h=>!h.v3).length,
+          screenEdgeBps:prepared.screen.exactProbeEdgeBps,
+        }));
+        return {positive};
+      }
 
       const persistQuote=(quote:EconomicExecutionQuote,phase:string)=>{
         store.record('executable_quotes',key,withRun(run,{
@@ -217,6 +411,7 @@ async function tick(): Promise<void> {
           netProfitUsd:quote.costBreakdown.netProfitUsd,
           costBreakdown:quote.costBreakdown,
           verifiedClosedCycle:true,
+          atomicVerified:quote.atomicExecutor!==null,
           engine:quote.engine,
           truthLevel:quote.truthLevel,
           phase,
@@ -276,7 +471,7 @@ async function tick(): Promise<void> {
             }),{timestampMs:Date.now(),blockNumber:sizingBlock,source:'arb-radar:v0.9-atomic-paper'}),
           });
           const bestQuote=depth.bestQuote;
-          const optimized=bestQuote?optimizedFromQuote(context,bestQuote):null;
+          const optimized=bestQuote?optimizedFromQuote(context.route,bestQuote):null;
           store.record('opportunity_lifecycle',key,withRun(run,{
             depthSizing:{
               minUsd:config.minCandidateTradeUsd,
@@ -340,11 +535,13 @@ async function tick(): Promise<void> {
         ageMs:result.reason.ageMs,
         maxAgeMs:result.reason.maxAgeMs,
         verifiedClosedCycle:false,
+        engine:result.candidate.value.kind==='mixed'?'v0.10-mixed-route-coverage':'v0.9-economic-truth-atomic-override',
       }),{timestampMs:monotonicClock.now(),blockNumber:null,source:'arb-radar:economic-truth'});
       continue;
     }
     unavailable++;
     const {prepared,discoveredAtMs}=result.candidate.value;
+    const mixed=result.candidate.value.kind==='mixed';
     store.record('executable_quotes',result.candidate.key,withRun(run,{
       status:'unavailable',
       reason:String(result.reason),
@@ -352,20 +549,25 @@ async function tick(): Promise<void> {
       screen:prepared.screen,
       discoveredAtMs,
       verifiedClosedCycle:false,
-      engine:'v0.9-economic-truth-atomic-override',
-    }),{timestampMs:Date.now(),blockNumber:null,source:'arb-radar:economic-truth'});
-    console.warn(json({key:result.candidate.key,truthQuoteUnavailable:String(result.reason)}));
+      engine:mixed?'v0.10-mixed-route-coverage':'v0.9-economic-truth-atomic-override',
+    }),{timestampMs:Date.now(),blockNumber:null,source:mixed?'arb-radar:v0.10-mixed-atomic-paper':'arb-radar:economic-truth'});
+    console.warn(json({key:result.candidate.key,truthQuoteUnavailable:String(result.reason),engine:mixed?'v0.10-mixed-route-coverage':'v0.9-economic-truth-atomic-override'}));
   }
 
   const tickCompletedMs=monotonicClock.now();
   store.record('radar_runtime',`tick:${Math.floor(tickStartedMs)}`,withRun(run,{
     tickStartedMs,tickCompletedMs,durationMs:tickCompletedMs-tickStartedMs,
-    engine:'v0.9-economic-truth-atomic-override',
+    engine:'v0.10-mixed-route-coverage',
     screenBlock,
     launchesRequested:snapshots.length,
     metadataLoaded,
     truthPairsPotential,
     truthCandidates:candidates.length,
+    v4Candidates,
+    mixedCandidates,
+    mixedPairsConsidered,
+    mixedPairsQuoted,
+    mixedScreenFailures,
     truthScanFailures,
     opportunities,
     unavailable,
@@ -376,19 +578,26 @@ async function tick(): Promise<void> {
     minCandidateTradeUsd:config.minCandidateTradeUsd,
     truthScanConcurrency:config.truthScanConcurrency,
     truthLaunchLimit:config.truthLaunchLimit,
+    mixedPairLimitPerLaunch:config.mixedPairLimitPerLaunch,
+    mixedProbeConcurrency:config.mixedProbeConcurrency,
     candidateMaxQueueMs:config.candidateMaxQueueMs,
     scheduler:runtimeMetrics,
   }),{timestampMs:tickCompletedMs,blockNumber:screenBlock,source:'arb-radar:economic-truth'});
 
   console.log(json({
     paperOnly:true,
-    engine:'v0.9-economic-truth-atomic-override',
+    engine:'v0.10-mixed-route-coverage',
     runId:run.runId,
     screenBlock,
     launches:snapshots.length,
     metadataLoaded,
     truthPairsPotential,
     truthCandidates:candidates.length,
+    v4Candidates,
+    mixedCandidates,
+    mixedPairsConsidered,
+    mixedPairsQuoted,
+    mixedScreenFailures,
     truthScanFailures,
     opportunities,
     unavailable,
