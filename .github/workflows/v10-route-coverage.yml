@@ -6,6 +6,10 @@ on:
     paths:
       - 'scripts/v10-route-coverage.mjs'
       - 'src/economic/**'
+      - 'src/index.ts'
+      - 'src/config.ts'
+      - 'src/research/run.ts'
+      - '.env.example'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/v10-route-coverage.yml'
@@ -26,6 +30,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Run one integrated v0.10 radar tick
+        shell: bash
+        env:
+          RADAR_DB: /tmp/arb-radar-v10-integrated.sqlite
+          TRUTH_LAUNCH_LIMIT: 2
+          TRUTH_SCAN_CONCURRENCY: 1
+          MIXED_PAIR_LIMIT_PER_LAUNCH: 2
+          MIXED_PROBE_CONCURRENCY: 1
+          PROBE_CONCURRENCY: 1
+          SIZING_CONCURRENCY: 1
+          SIZING_QUOTE_CONCURRENCY: 1
+          CANDIDATE_MAX_QUEUE_MS: 10000
+        run: |
+          set -euo pipefail
+          timeout 240s node dist/index.js | tee /tmp/arb-radar-v10-integrated.log
+          grep -q '"engine":"v0.10-mixed-route-coverage"' /tmp/arb-radar-v10-integrated.log
+          grep -q '"mixedPairsConsidered"' /tmp/arb-radar-v10-integrated.log
+          grep -q '"mixedPairsQuoted"' /tmp/arb-radar-v10-integrated.log
+          grep -q '"truthScanFailures":0' /tmp/arb-radar-v10-integrated.log
       - name: Audit recent structural route coverage
         env:
           ROUTE_COVERAGE_LAUNCH_LIMIT: 30
