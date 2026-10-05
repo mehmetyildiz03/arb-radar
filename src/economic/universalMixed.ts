@@ -247,11 +247,11 @@ export interface UniversalMixedAtomicSimulation {
   source:'universal-router-state-override';
 }
 
-export async function simulateUniversalMixedAtomic(
+export async function simulateUniversalMixedParity(
   client:PublicClient,
   quote:MixedCycleQuote,
 ):Promise<UniversalMixedAtomicSimulation> {
-  if(quote.amountOut<=quote.amountIn) throw new Error('Mixed atomic verification requires gross-positive quote');
+  if(quote.amountIn<=0n||quote.amountOut<=0n) throw new Error('Mixed parity verification requires positive amounts');
   const plan=await buildUniversalMixedPlan(client,quote);
   const strictPlan=await buildUniversalMixedPlan(client,quote,plan.deadline,1n);
   const rpc=rawRpc(client);
@@ -317,4 +317,12 @@ export async function simulateUniversalMixedAtomic(
     exactOutputParity:true,
     source:'universal-router-state-override',
   };
+}
+
+export async function simulateUniversalMixedAtomic(
+  client:PublicClient,
+  quote:MixedCycleQuote,
+):Promise<UniversalMixedAtomicSimulation> {
+  if(quote.amountOut<=quote.amountIn) throw new Error('Mixed atomic verification requires gross-positive quote');
+  return simulateUniversalMixedParity(client,quote);
 }
