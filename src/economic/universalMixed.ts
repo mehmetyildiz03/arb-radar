@@ -178,6 +178,7 @@ export async function buildUniversalMixedPlan(
   client:PublicClient,
   quote:MixedCycleQuote,
   deadline:bigint=2n**256n-1n,
+  extraFinalMinimum:bigint=0n,
 ):Promise<UniversalMixedPlan> {
   const {cycle,amountIn,amountOut,blockNumber,steps}=quote;
   const ref=getReference(robinhoodChain.id);
@@ -206,7 +207,8 @@ export async function buildUniversalMixedPlan(
     }
   }
 
-  const finalMinimum=wethDust+amountOut;
+  if(extraFinalMinimum<0n) throw new Error('Negative final minimum increment');
+  const finalMinimum=wethDust+amountOut+extraFinalMinimum;
   commands.push(CMD_UNWRAP_WETH);
   inputs.push(encodeUnwrapWeth(finalMinimum));
 
@@ -241,6 +243,7 @@ export interface UniversalMixedAtomicSimulation {
   calldata:Hex;
   calldataBytes:number;
   atomicVerified:true;
+  exactOutputParity:true;
   source:'universal-router-state-override';
 }
 
@@ -250,6 +253,7 @@ export async function simulateUniversalMixedAtomic(
 ):Promise<UniversalMixedAtomicSimulation> {
   if(quote.amountOut<=quote.amountIn) throw new Error('Mixed atomic verification requires gross-positive quote');
   const plan=await buildUniversalMixedPlan(client,quote);
+  const strictPlan=await buildUniversalMixedPlan(client,quote,plan.deadline,1n);
   const rpc=rawRpc(client);
   const blockTag=toHex(quote.blockNumber);
   const callerBalance=quote.amountIn*100n+10n**18n;
@@ -268,6 +272,20 @@ export async function simulateUniversalMixedAtomic(
     params:[tx,blockTag,stateOverride],
   });
   if(typeof result!=='string'||!result.startsWith('0x')) throw new Error('Invalid Universal Router eth_call result');
+
+  const strictTx={...tx,data:strictPlan.calldata};
+  let strictReverted=false;
+  try{
+    await rpc.request({
+      method:'eth_call',
+      params:[strictTx,blockTag,stateOverride],
+    });
+  }catch{
+    strictReverted=true;
+  }
+  if(!strictReverted) {
+    throw new Error('Universal Router output exceeded sequential quote; atomic parity not proven');
+  }
 
   let gasEstimate:bigint|null=null;
   let gasEstimateError:string|null=null;
@@ -296,6 +314,7 @@ export async function simulateUniversalMixedAtomic(
     calldata:plan.calldata,
     calldataBytes:(plan.calldata.length-2)/2,
     atomicVerified:true,
+    exactOutputParity:true,
     source:'universal-router-state-override',
   };
 }
