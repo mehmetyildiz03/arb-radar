@@ -35,11 +35,14 @@ jobs:
           set -o pipefail
           node scripts/v010-route-coverage-audit.mjs | tee route-coverage-audit.json
       - name: Publish coverage summary
+        if: always()
         shell: bash
         run: |
           node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           import { readFileSync } from 'node:fs';
-          const report=JSON.parse(readFileSync('route-coverage-audit.json','utf8'));
+          let report;
+          try {report=JSON.parse(readFileSync('route-coverage-audit.json','utf8'));}
+          catch {console.log('Coverage report unavailable; live metadata audit did not finish.');process.exit(0);}
           const s=report.summary;
           console.log('## Bounded Par route coverage (no profit claim)');
           console.log('Metric | Count');
@@ -56,5 +59,6 @@ jobs:
             'Pairs excluded only by V3':s.excludedOnlyByV3,
             'Pairs with common-prefix compression':s.pairsWithCompressedBase,
           })) console.log(key+' | '+val);
-          console.log('\nThis is structural coverage only; no executable profitability is claimed.');
+          console.log('\\nCompleteness: '+report.completeness+'.');
+          console.log('\\nThis is structural coverage only; no executable profitability is claimed.');
           NODE
