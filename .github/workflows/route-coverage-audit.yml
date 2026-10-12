@@ -27,8 +27,13 @@ jobs:
       - run: npm run build
       - name: Inspect recent Par routes without quoting or submitting trades
         env:
-          COVERAGE_LAUNCH_LIMIT: 30
-        run: node scripts/v010-route-coverage-audit.mjs | tee route-coverage-audit.json
+          COVERAGE_LAUNCH_LIMIT: 12
+          COVERAGE_DELAY_MS: 1200
+          COVERAGE_RETRY_DELAY_MS: 2500
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/v010-route-coverage-audit.mjs | tee route-coverage-audit.json
       - name: Publish coverage summary
         shell: bash
         run: |
