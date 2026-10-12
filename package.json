@@ -21,7 +21,8 @@
     "diagnose:truth": "npm run build && node scripts/v081-truth-diagnostic.mjs",
     "live:nitro-smoke": "npm run build && node scripts/v083-nitro-fee-smoke.mjs",
     "recheck:historical-cost": "npm run build && node scripts/v083-historical-cost-recheck.mjs",
-    "live:atomic-smoke": "npm run build && node scripts/v09-atomic-override-smoke.mjs"
+    "live:atomic-smoke": "npm run build && node scripts/v09-atomic-override-smoke.mjs",
+    "audit:coverage": "npm run build && node scripts/v010-route-coverage-audit.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
