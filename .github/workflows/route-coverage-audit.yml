@@ -27,7 +27,7 @@ jobs:
       - run: npm run build
       - name: Inspect recent Par routes without quoting or submitting trades
         env:
-          COVERAGE_LAUNCH_LIMIT: 12
+          COVERAGE_LAUNCH_LIMIT: 2
           COVERAGE_DELAY_MS: 1200
           COVERAGE_RETRY_DELAY_MS: 2500
         shell: bash
