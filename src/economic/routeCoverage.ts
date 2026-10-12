@@ -76,10 +76,10 @@ export function classifyLaunchCoverage(launch: TradableLaunch): PairCoverage[] {
         const shortestSelected=selected.cycle;
         // Compare against the uncompressed reference-root cycle only if the
         // same pair has one; otherwise leave the benchmark unknown.
-        const longest=cycles
-          .filter(c=>c.hopCount>=shortestSelected.hopCount)
-          .sort((a,b)=>b.hopCount-a.hopCount)[0];
-        const reference=longest?.hopCount ?? null;
+        const referenceCycle=cycles
+          .filter(c=>c.referenceToBase.length===0)
+          .sort((a,b)=>a.hopCount-b.hopCount)[0];
+        const reference=referenceCycle?.hopCount ?? null;
         const saved=reference===null ? null : Math.max(0,reference-shortestSelected.hopCount);
         out.push({
           ...base,
