@@ -1,0 +1,55 @@
+name: v0.10 Route Coverage Audit
+
+on:
+  push:
+    branches: [v010-route-coverage-audit]
+    paths:
+      - 'src/economic/routeCoverage.ts'
+      - 'scripts/v010-route-coverage-audit.mjs'
+      - 'package.json'
+      - '.github/workflows/route-coverage-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Inspect recent Par routes without quoting or submitting trades
+        env:
+          COVERAGE_LAUNCH_LIMIT: 30
+        run: node scripts/v010-route-coverage-audit.mjs | tee route-coverage-audit.json
+      - name: Publish coverage summary
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from 'node:fs';
+          const report=JSON.parse(readFileSync('route-coverage-audit.json','utf8'));
+          const s=report.summary;
+          console.log('## Bounded Par route coverage (no profit claim)');
+          console.log('Metric | Count');
+          console.log('--- | ---:');
+          for(const [key,val] of Object.entries({
+            'Recent launches returned':report.returnedLaunches,
+            'Classified launches':report.classifiedLaunches,
+            'Directed market pairs':s.directedPairs,
+            'Hookless all-V4 eligible':s.classes['hookless-all-v4'],
+            'Mixed V3/V4 only':s.classes['mixed-v3-v4'],
+            'V4 with hooks only':s.classes['v4-hooks'],
+            'No closed cycle':s.classes['no-closed-cycle'],
+            'Malformed/unresolved route':s.classes['route-error'],
+            'Pairs excluded only by V3':s.excludedOnlyByV3,
+            'Pairs with common-prefix compression':s.pairsWithCompressedBase,
+          })) console.log(key+' | '+val);
+          console.log('\nThis is structural coverage only; no executable profitability is claimed.');
+          NODE
